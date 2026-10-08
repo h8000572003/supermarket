@@ -47,6 +47,8 @@ export interface DailyReport {
   readonly fundsAtEnd: number;
   /** 當日下單的進貨支出（含運費） */
   readonly purchases: number;
+  /** 當日購買設施的支出（已扣除出售回收） */
+  readonly fixtures: number;
   readonly rent: number;
   readonly wages: number;
   readonly waste: readonly WasteLine[];
@@ -65,6 +67,7 @@ export class DayLedger {
   private satisfactionSum = 0;
   private satisfactionCount = 0;
   purchases = 0;
+  fixtures = 0;
   rent = 0;
   wages = 0;
   waste: WasteLine[] = [];
@@ -113,6 +116,7 @@ export class DayLedger {
       fundsAtStart: this.fundsAtStart,
       fundsAtEnd,
       purchases: this.purchases,
+      fixtures: this.fixtures,
       rent: this.rent,
       wages: this.wages,
       waste: this.waste,

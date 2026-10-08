@@ -43,7 +43,10 @@ export function Hud({ controller, sounds, onOpenStock, onOpenMilestones }: HudPr
     <div className="hud">
       <span className="hud-title">便利商店模擬</span>
       <span className="hud-actions">
-        <button onClick={onOpenStock}>商品與進貨{pending > 0 ? `（在途 ${pending} 張）` : ''}</button>
+        <button className="with-badge" onClick={onOpenStock} aria-label={`商品與進貨，在途 ${pending} 張`}>
+          商品與進貨
+          {pending > 0 && <span className="badge">{pending}</span>}
+        </button>
         <button onClick={onOpenMilestones}>目標</button>
         <button onClick={() => sounds.setMuted(!muted)} aria-label={muted ? '開啟音效' : '關閉音效'}>
           {muted ? '🔇' : '🔊'}

@@ -45,18 +45,18 @@ const product = (
 ): ProductDef => ({ id, name, category, cost, suggestedPrice, minOrder });
 
 export const PRODUCTS: readonly ProductDef[] = [
-  product('green-tea', '綠茶', 'drink', 15, 25, 12),
-  product('cola', '可樂', 'drink', 18, 30, 12),
-  product('water', '礦泉水', 'drink', 8, 15, 12),
-  product('rice-ball', '飯糰', 'fresh', 20, 35, 6),
-  product('sandwich', '三明治', 'fresh', 28, 45, 6),
-  product('bento', '便當', 'fresh', 50, 80, 6),
-  product('chips', '洋芋片', 'snack', 20, 35, 6),
-  product('chocolate', '巧克力', 'snack', 25, 40, 6),
-  product('cup-noodle', '杯麵', 'noodle', 18, 30, 6),
-  product('bowl-noodle', '碗麵', 'noodle', 30, 50, 6),
-  product('tissue', '衛生紙', 'daily', 40, 65, 6),
-  product('toothbrush', '牙刷', 'daily', 20, 35, 6),
+  product('green-tea', '綠茶', 'drink', 12, 25, 12),
+  product('cola', '可樂', 'drink', 15, 30, 12),
+  product('water', '礦泉水', 'drink', 7, 15, 12),
+  product('rice-ball', '飯糰', 'fresh', 18, 35, 6),
+  product('sandwich', '三明治', 'fresh', 23, 45, 6),
+  product('bento', '便當', 'fresh', 42, 80, 6),
+  product('chips', '洋芋片', 'snack', 17, 35, 6),
+  product('chocolate', '巧克力', 'snack', 20, 40, 6),
+  product('cup-noodle', '杯麵', 'noodle', 15, 30, 6),
+  product('bowl-noodle', '碗麵', 'noodle', 25, 50, 6),
+  product('tissue', '衛生紙', 'daily', 33, 65, 6),
+  product('toothbrush', '牙刷', 'daily', 17, 35, 6),
 ];
 
 const BY_ID = new Map(PRODUCTS.map((p) => [p.id, p]));

@@ -50,6 +50,12 @@ export function DailyReportPanel({ game }: { game: Game }) {
             <dd className="positive">{formatMoney(report.revenue)}</dd>
             <dt>進貨支出</dt>
             <dd>{formatExpense(report.purchases)}</dd>
+            {report.fixtures !== 0 && (
+              <>
+                <dt>設施購置（扣除出售回收）</dt>
+                <dd>{report.fixtures > 0 ? formatExpense(report.fixtures) : `+${formatMoney(-report.fixtures)}`}</dd>
+              </>
+            )}
             <dt>租金</dt>
             <dd>{formatExpense(report.rent)}</dd>
             <dt>店員日薪</dt>

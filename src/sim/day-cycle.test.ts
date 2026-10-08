@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MAX_STEPS_PER_TICK, OPEN_HOURS_REAL_MS, OPEN_MINUTE, STEP_MS, STEPS_PER_DAY } from './clock/clock';
+import { productById } from './catalog/products';
 import { DAILY_RENT, Game, STARTING_FUNDS } from './game';
 import { playThroughDay, runOpenHours } from './test-helpers';
 
@@ -104,6 +105,23 @@ describe('每日結算與固定支出', () => {
   });
 });
 
+describe('結算對帳', () => {
+  it('各項收支加總等於資金變化（含設施購置與出售回收）', () => {
+    const game = newGame();
+    const fridge = game.placeFixture('fridge', { origin: { x: 2, y: 2 }, facing: 'south' });
+    const shelf = game.placeFixture('shelf', { origin: { x: 6, y: 4 }, facing: 'south' });
+    game.placeFixture('register', { origin: { x: 5, y: 7 }, facing: 'west' });
+    if (!fridge.ok || !shelf.ok) throw new Error('setup');
+    game.sellFixture(shelf.value.id);
+    game.hireStaff();
+    game.submitPurchaseOrder([{ productId: 'cola', qty: 12 }]);
+    runOpenHours(game);
+    const r = game.lastReport!;
+    expect(r.fixtures).toBe(4_000 + 3_000 + 2_000 - 1_000);
+    expect(r.fundsAtEnd - r.fundsAtStart).toBe(r.revenue - r.purchases - r.fixtures - r.rent - r.wages);
+  });
+});
+
 describe('鮮食報廢', () => {
   function withRiceBalls() {
     const game = new Game({ seed: 1, customerArrivals: false });
@@ -135,7 +153,7 @@ describe('鮮食報廢', () => {
     playThroughDay(game);
     expect(game.backroomQty('rice-ball')).toBe(0);
     expect(game.slots(fridgeId)[0]).toEqual({ productId: 'rice-ball', batches: [] });
-    expect(game.todayWaste).toEqual([{ productId: 'rice-ball', qty: 12, cost: 12 * 20 }]);
+    expect(game.todayWaste).toEqual([{ productId: 'rice-ball', qty: 12, cost: 12 * productById('rice-ball')!.cost }]);
   });
 
   it('非鮮食不會過期', () => {

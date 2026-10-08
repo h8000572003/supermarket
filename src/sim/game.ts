@@ -77,9 +77,9 @@ const fail = (error: CommandError): Result<never> => ({ ok: false, error });
 
 export const STARTING_FUNDS = 30_000;
 /** 每個營業日的租金 */
-export const DAILY_RENT = 1_500;
+export const DAILY_RENT = 600;
 /** 每位店員的日薪 */
-export const DAILY_WAGE = 1_000;
+export const DAILY_WAGE = 600;
 export const MAX_STAFF = 6;
 
 /** 模擬中發生、值得畫面或音效回應的瞬間事件 */
@@ -181,7 +181,12 @@ export class Game {
       pendingOrders: this._pendingOrders,
       rngState: this.rng.state,
       speed: this._speed,
-      ledger: { fundsAtStart: this.ledger.fundsAtStart, purchases: this.ledger.purchases, waste: this.ledger.waste },
+      ledger: {
+        fundsAtStart: this.ledger.fundsAtStart,
+        purchases: this.ledger.purchases,
+        fixtures: this.ledger.fixtures,
+        waste: this.ledger.waste,
+      },
     };
   }
 
@@ -208,6 +213,7 @@ export class Game {
     game._speed = s.speed;
     game.ledger = new DayLedger(s.day, s.ledger.fundsAtStart);
     game.ledger.purchases = s.ledger.purchases;
+    game.ledger.fixtures = s.ledger.fixtures;
     game.ledger.waste = [...s.ledger.waste];
     return game;
   }
@@ -361,6 +367,7 @@ export class Game {
     this.layout.put(fixture);
     this.inventory.addDisplay(fixture.id, FIXTURES[kind].slots);
     this._funds -= FIXTURES[kind].price;
+    this.ledger.fixtures += FIXTURES[kind].price;
     this.changed();
     return ok(fixture);
   }
@@ -391,6 +398,7 @@ export class Game {
     this.layout.remove(id);
     this.inventory.removeDisplay(id);
     this._funds += refund;
+    this.ledger.fixtures -= refund;
     this.changed();
     return ok(refund);
   }

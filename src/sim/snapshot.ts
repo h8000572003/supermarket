@@ -6,7 +6,7 @@ import type { WasteLine } from './report/daily-report';
 import type { Fixture } from './store/store-layout';
 
 /** 快照格式版本；結構改變時遞增，舊版存檔即不再讀取 */
-export const SNAPSHOT_VERSION = 1;
+export const SNAPSHOT_VERSION = 2;
 
 /**
  * 準備階段的完整遊戲狀態（見 ADR 0002）。
@@ -35,6 +35,7 @@ export interface GameSnapshot {
   readonly ledger: {
     readonly fundsAtStart: number;
     readonly purchases: number;
+    readonly fixtures: number;
     readonly waste: readonly WasteLine[];
   };
 }

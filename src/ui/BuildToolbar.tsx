@@ -71,9 +71,14 @@ export function BuildToolbar({ controller }: { controller: Controller }) {
         <button onClick={() => controller.fireLast()} disabled={game.staff.length === 0} aria-label="解雇店員">
           －
         </button>
-        <span className="hint">
-          {tool.mode === 'place' ? '左鍵放置 · R 旋轉 · 右鍵 / Esc 取消' : '點選設施以旋轉、移動或出售'}
-        </span>
+      </div>
+      {/* 提示放在工具列外，文字長短改變時按鈕位置不會跟著移動 */}
+      <div className="toolbar-hint">
+        {game.day === 1 && game.fixtures.length === 0 && tool.mode === 'select'
+          ? '先放冷藏櫃、貨架與收銀台，指定格位商品、進貨、雇店員，再按「開店」'
+          : tool.mode === 'place'
+            ? '左鍵放置 · R 旋轉 · 右鍵 / Esc 取消'
+            : '點選設施以旋轉、移動或出售'}
       </div>
     </div>
   );
