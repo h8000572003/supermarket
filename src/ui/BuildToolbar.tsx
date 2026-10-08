@@ -2,6 +2,7 @@ import { FIXTURES, FIXTURE_KINDS } from '../sim/catalog/fixtures';
 import { sellRefund } from '../sim/game';
 import type { Controller } from './controller';
 import { useGameVersion, useInteraction } from './hooks';
+import { SlotPanel } from './SlotPanel';
 import { formatMoney } from './messages';
 
 export function BuildToolbar({ controller }: { controller: Controller }) {
@@ -13,6 +14,10 @@ export function BuildToolbar({ controller }: { controller: Controller }) {
   return (
     <div className="toolbar-area">
       {message && <div className="toast">{message}</div>}
+
+      {selected && tool.mode === 'select' && FIXTURES[selected.kind].slots > 0 && (
+        <SlotPanel controller={controller} fixture={selected} />
+      )}
 
       {selected && tool.mode === 'select' && (
         <div className="panel">

@@ -10,6 +10,13 @@ export const ERROR_MESSAGES: Record<CommandError, string> = {
   'not-prep-phase': '只能在準備階段操作',
   'insufficient-funds': '資金不足',
   'unknown-fixture': '找不到這個設施',
+  'invalid-slot': '找不到這個格位',
+  'unknown-product': '找不到這個商品',
+  'category-locked': '這個商品類別尚未解鎖',
+  'wrong-display': '這個商品不能放在這種陳列櫃',
+  'invalid-price': '售價必須是正整數',
+  'empty-order': '進貨單沒有任何品項',
+  'below-min-order': '低於最低訂購量',
 };
 
 export const formatMoney = (n: number) => `$${n.toLocaleString('zh-TW')}`;

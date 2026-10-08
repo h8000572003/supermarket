@@ -1,12 +1,14 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createStoreScene } from './render/scene';
 import type { StoreScene } from './render/scene';
 import { BuildToolbar } from './ui/BuildToolbar';
 import type { Controller } from './ui/controller';
 import { Hud } from './ui/Hud';
+import { StockPanel } from './ui/StockPanel';
 
 export function App({ controller }: { controller: Controller }) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const [stockOpen, setStockOpen] = useState(false);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -26,6 +28,7 @@ export function App({ controller }: { controller: Controller }) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
       if (e.key === 'r' || e.key === 'R') controller.rotate();
       else if (e.key === 'Escape') controller.cancel();
     };
@@ -36,8 +39,9 @@ export function App({ controller }: { controller: Controller }) {
   return (
     <>
       <div ref={hostRef} className="stage" />
-      <Hud game={controller.game} />
+      <Hud game={controller.game} onOpenStock={() => setStockOpen((o) => !o)} />
       <BuildToolbar controller={controller} />
+      {stockOpen && <StockPanel controller={controller} onClose={() => setStockOpen(false)} />}
     </>
   );
 }

@@ -113,3 +113,152 @@ body,
   background: #8a3f3c;
   font-size: 14px;
 }
+
+.hud {
+  pointer-events: auto;
+}
+
+.hud-actions {
+  display: flex;
+  gap: 8px;
+}
+
+button {
+  padding: 6px 12px;
+  border: 1px solid #4a5060;
+  border-radius: 6px;
+  background: #343946;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  background: #3e4452;
+}
+
+button.primary {
+  border-color: #c9a23f;
+  background: #6b5521;
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+input,
+select {
+  padding: 4px 6px;
+  border: 1px solid #4a5060;
+  border-radius: 4px;
+  background: #22262f;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+}
+
+.slot-panel {
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  gap: 6px 16px;
+}
+
+.slot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+}
+
+.slot-label {
+  opacity: 0.7;
+}
+
+.slot-stock {
+  min-width: 3.5em;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+
+.side-panel {
+  position: absolute;
+  top: 64px;
+  right: 12px;
+  bottom: 84px;
+  display: flex;
+  flex-direction: column;
+  width: min(640px, calc(100vw - 24px));
+  border-radius: 8px;
+  background: rgb(20 22 28 / 0.95);
+  overflow: hidden;
+}
+
+.side-panel header,
+.side-panel footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+}
+
+.side-panel h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.side-panel footer {
+  border-top: 1px solid #343946;
+  font-size: 14px;
+}
+
+.side-panel footer strong {
+  color: #ffd86b;
+}
+
+.side-panel table {
+  display: block;
+  flex: 1;
+  overflow: auto;
+  border-collapse: collapse;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.side-panel th,
+.side-panel td {
+  padding: 6px 10px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.side-panel th:first-child,
+.side-panel td:first-child {
+  width: 100%;
+  text-align: left;
+}
+
+.side-panel th {
+  position: sticky;
+  top: 0;
+  background: #1b1e25;
+  font-weight: 500;
+  opacity: 0.8;
+}
+
+.side-panel td small {
+  display: block;
+  opacity: 0.6;
+  font-size: 12px;
+}
+
+.side-panel tr.locked {
+  opacity: 0.45;
+}
+
+.side-panel input {
+  width: 5em;
+  text-align: right;
+}
