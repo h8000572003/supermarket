@@ -11,6 +11,9 @@ export const STORE_DEPTH = 10;
 /** 入口：店面底邊中央 */
 export const ENTRANCE: GridPoint = { x: Math.floor(STORE_WIDTH / 2), y: STORE_DEPTH - 1 };
 
+/** 倉庫門：左後牆（x = 0）上的固定位置，店員由此進出倉庫 */
+export const BACKROOM_DOOR: GridPoint = { x: 0, y: 2 };
+
 export function isInsideStore(p: GridPoint): boolean {
   return p.x >= 0 && p.x < STORE_WIDTH && p.y >= 0 && p.y < STORE_DEPTH;
 }

@@ -4,9 +4,10 @@ import type { FixtureKind } from '../sim/catalog/fixtures';
 import type { Game } from '../sim/game';
 import { accessTiles, footprint, footprintTiles } from '../sim/store/geometry';
 import type { Placement } from '../sim/store/geometry';
-import { ENTRANCE, STORE_DEPTH, STORE_WIDTH, isInsideStore } from '../sim/store/layout';
+import { BACKROOM_DOOR, ENTRANCE, STORE_DEPTH, STORE_WIDTH, isInsideStore } from '../sim/store/layout';
 import type { GridPoint } from '../sim/store/layout';
 import type { Controller } from '../ui/controller';
+import { PersonSprite, STAFF_LOOK, loadAgentTextures } from './agent-sprites';
 import { createFixtureSprites, loadFixtureTextures } from './fixture-sprites';
 import type { FixtureStyle } from './fixture-sprites';
 import { TILE_HEIGHT, TILE_WIDTH, gridToScreen, screenToGrid, tileDiamond } from './iso';
@@ -23,9 +24,11 @@ const COLORS = {
   hover: 0xffffff,
   access: 0x4f9de0,
   selected: 0xffd86b,
+  door: 0x7a5a3c,
 };
 
 const WALL_HEIGHT = TILE_HEIGHT * 2.5;
+const DOOR_HEIGHT = TILE_HEIGHT * 1.6;
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 2.5;
 
@@ -40,6 +43,7 @@ export async function createStoreScene(host: HTMLElement, controller: Controller
   await Promise.all([
     app.init({ resizeTo: host, background: COLORS.background, antialias: true }),
     loadFixtureTextures(),
+    loadAgentTextures(),
   ]);
   host.appendChild(app.canvas);
 
@@ -95,6 +99,33 @@ export async function createStoreScene(host: HTMLElement, controller: Controller
   };
   redraw();
   const unsubscribeGame = game.subscribe(redraw);
+
+  // 店員位置每幀更新：在模擬的上一步與這一步之間內插
+  const agentSprites = new Map<string, PersonSprite>();
+  app.ticker.add(() => {
+    const alive = new Set<string>();
+    const alpha = game.stepAlpha;
+    for (const agent of game.staffAgents) {
+      alive.add(agent.id);
+      let sprite = agentSprites.get(agent.id);
+      if (!sprite) {
+        sprite = new PersonSprite(STAFF_LOOK);
+        agentSprites.set(agent.id, sprite);
+        objects.addChild(sprite);
+      }
+      const x = agent.prev.x + (agent.pos.x - agent.prev.x) * alpha;
+      const y = agent.prev.y + (agent.pos.y - agent.prev.y) * alpha;
+      const p = gridToScreen(x + 0.5, y + 0.5);
+      sprite.position.set(p.x, p.y);
+      sprite.zIndex = (x + y) * 10 + 5;
+      sprite.carrying = agent.carrying.length > 0;
+    }
+    for (const [id, sprite] of agentSprites) {
+      if (alive.has(id)) continue;
+      sprite.destroy({ children: true });
+      agentSprites.delete(id);
+    }
+  });
   const unsubscribeInteraction = interaction.subscribe(redraw);
 
   return {
@@ -108,13 +139,19 @@ export async function createStoreScene(host: HTMLElement, controller: Controller
   };
 }
 
+const FIXTURE_LABEL = 'fixture';
+
 function drawObjects(objects: Container, game: Game, { interaction }: Controller): void {
-  for (const child of objects.removeChildren()) child.destroy({ children: true });
+  for (const child of objects.children.filter((c) => c.label === FIXTURE_LABEL)) {
+    objects.removeChild(child);
+    child.destroy({ children: true });
+  }
   const { tool, hover } = interaction.state;
   const movingId = tool.mode === 'place' ? tool.movingId : undefined;
 
   const add = (kind: FixtureKind, placement: Placement, style: FixtureStyle, depthBias = 0) => {
     for (const sprite of createFixtureSprites(kind, placement, style)) {
+      sprite.label = FIXTURE_LABEL;
       sprite.zIndex += depthBias;
       objects.addChild(sprite);
     }
@@ -192,6 +229,12 @@ function drawWalls(): Graphics {
     .lineTo(...(up(origin) as [number, number]))
     .lineTo(...(up(backRight) as [number, number]))
     .stroke({ width: 3, color: COLORS.wallTop });
+
+  // 倉庫門：左後牆上對應 BACKROOM_DOOR 那一格
+  const doorA = gridToScreen(0, BACKROOM_DOOR.y + 0.15);
+  const doorB = gridToScreen(0, BACKROOM_DOOR.y + 0.85);
+  g.poly([doorA.x, doorA.y, doorB.x, doorB.y, doorB.x, doorB.y - DOOR_HEIGHT, doorA.x, doorA.y - DOOR_HEIGHT]).fill(COLORS.door);
+  g.circle(doorB.x + 4, doorB.y - DOOR_HEIGHT / 2 - 2, 1.8).fill(COLORS.wallTop);
   return g;
 }
 

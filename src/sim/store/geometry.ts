@@ -71,3 +71,9 @@ export function staffAccessTiles(def: FixtureDef, placement: Placement): GridPoi
 export function accessTiles(def: FixtureDef, placement: Placement): GridPoint[] {
   return [...customerAccessTiles(def, placement), ...staffAccessTiles(def, placement)];
 }
+
+/** 第 slotIndex 個格位對應的顧客側取用格：格位平均分配到正面的每一格 */
+export function slotAccessTile(def: FixtureDef, placement: Placement, slotIndex: number): GridPoint {
+  const tiles = customerAccessTiles(def, placement);
+  return tiles[Math.min(tiles.length - 1, Math.floor((slotIndex * tiles.length) / def.slots))] as GridPoint;
+}

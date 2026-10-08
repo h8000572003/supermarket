@@ -66,6 +66,19 @@ export class Controller {
     this.interaction.update(result.ok ? { selectedId: null, message: null } : { message: ERROR_MESSAGES[result.error] });
   }
 
+  hire(): void {
+    const r = this.game.hireStaff();
+    this.interaction.update({ message: r.ok ? null : ERROR_MESSAGES[r.error] });
+  }
+
+  /** 解雇最後雇用的店員 */
+  fireLast(): void {
+    const last = this.game.staff.at(-1);
+    if (!last) return;
+    const r = this.game.fireStaff(last.id);
+    this.interaction.update({ message: r.ok ? null : ERROR_MESSAGES[r.error] });
+  }
+
   /** 右鍵 / Esc */
   cancel(): void {
     const { tool } = this.interaction.state;

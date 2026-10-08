@@ -64,10 +64,26 @@ export class Inventory {
     if (!current?.productId) return 0;
     const room = capacity - totalQty(current.batches);
     if (room <= 0) return 0;
-    const { taken, rest } = takeFifo(this.backroomBatches(current.productId), room);
-    this.backroom.set(current.productId, rest);
-    this.setSlot(fixtureId, index, { ...current, batches: taken.reduce(addBatch, current.batches) });
+    const taken = this.takeFromBackroom(current.productId, room);
+    this.putIntoSlot(fixtureId, index, taken, capacity);
     return totalQty(taken);
+  }
+
+  /** 從倉庫以先進先出取出最多 qty 個 */
+  takeFromBackroom(productId: string, qty: number): Batch[] {
+    const { taken, rest } = takeFifo(this.backroomBatches(productId), qty);
+    this.backroom.set(productId, rest);
+    return taken;
+  }
+
+  /** 把批次放上格位，最多到 capacity；放不下或商品不符的退回倉庫 */
+  putIntoSlot(fixtureId: string, index: number, batches: readonly Batch[], capacity: number): void {
+    const current = this.slot(fixtureId, index);
+    if (!current) return this.receive(batches);
+    const matching = batches.filter((b) => b.productId === current.productId);
+    const { taken, rest } = takeFifo(matching, capacity - totalQty(current.batches));
+    this.setSlot(fixtureId, index, { ...current, batches: taken.reduce(addBatch, current.batches) });
+    this.receive([...rest, ...batches.filter((b) => b.productId !== current.productId)]);
   }
 
   /** 顧客從格位以先進先出拿取商品 */

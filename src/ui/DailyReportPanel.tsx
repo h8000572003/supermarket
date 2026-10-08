@@ -19,6 +19,8 @@ export function DailyReportPanel({ game }: { game: Game }) {
           <dd>{formatExpense(report.purchases)}</dd>
           <dt>租金</dt>
           <dd>{formatExpense(report.rent)}</dd>
+          <dt>店員日薪</dt>
+          <dd>{formatExpense(report.wages)}</dd>
           <dt>資金變化</dt>
           <dd className={change < 0 ? 'negative' : 'positive'}>
             {change >= 0 ? '+' : '−'}

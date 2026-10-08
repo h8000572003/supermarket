@@ -3,7 +3,7 @@ import type { FixtureKind } from '../catalog/fixtures';
 import { isReachable, reachableFrom } from '../pathfinding/grid';
 import { accessTiles, footprint, footprintTiles, inFootprint } from './geometry';
 import type { Placement } from './geometry';
-import { ENTRANCE, isInsideStore } from './layout';
+import { BACKROOM_DOOR, ENTRANCE, isInsideStore } from './layout';
 import type { GridPoint } from './layout';
 
 export interface Fixture extends Placement {
@@ -18,6 +18,8 @@ export type PlacementError =
   | 'overlaps-fixture'
   /** 擋住入口 */
   | 'blocks-entrance'
+  /** 擋住倉庫門 */
+  | 'blocks-backroom-door'
   /** 自己的取用格在店外或被其他設施佔用 */
   | 'access-blocked'
   /** 壓住其他設施的取用格 */
@@ -59,6 +61,7 @@ export class StoreLayout {
     if (!tiles.every(isInsideStore)) return 'out-of-bounds';
     if (tiles.some(occupiedByOthers)) return 'overlaps-fixture';
     if (tiles.some((t) => samePoint(t, ENTRANCE))) return 'blocks-entrance';
+    if (tiles.some((t) => samePoint(t, BACKROOM_DOOR))) return 'blocks-backroom-door';
 
     const ownAccess = accessTiles(def, placement);
     if (ownAccess.some((t) => !isInsideStore(t) || occupiedByOthers(t))) return 'access-blocked';
@@ -68,7 +71,7 @@ export class StoreLayout {
 
     const walkable = (p: GridPoint) => isInsideStore(p) && !inFootprint(fp, p) && !occupiedByOthers(p);
     const reachable = reachableFrom(ENTRANCE, walkable);
-    if (![...ownAccess, ...othersAccess].every((t) => isReachable(reachable, t))) return 'unreachable';
+    if (![BACKROOM_DOOR, ...ownAccess, ...othersAccess].every((t) => isReachable(reachable, t))) return 'unreachable';
 
     return null;
   }

@@ -2,6 +2,8 @@ import { FIXTURES, SELL_REFUND_RATE } from './catalog/fixtures';
 import type { FixtureKind } from './catalog/fixtures';
 import { CATEGORIES, PRODUCTS, STARTING_CATEGORIES, productById } from './catalog/products';
 import type { CategoryId } from './catalog/products';
+import { StaffAgent } from './agents/staff';
+import type { StaffWorld } from './agents/staff';
 import { MAX_STEPS_PER_TICK, STEPS_PER_DAY, STEP_MS, minuteOfDay } from './clock/clock';
 import type { Speed } from './clock/clock';
 import { orderTotal } from './economy/purchase-order';
@@ -12,7 +14,9 @@ import type { Slot } from './inventory/inventory';
 import { DayLedger } from './report/daily-report';
 import type { DailyReport, WasteLine } from './report/daily-report';
 import { Rng } from './rng';
-import { rotateClockwise } from './store/geometry';
+import { totalQty } from './inventory/batch';
+import { rotateClockwise, slotAccessTile } from './store/geometry';
+import { BACKROOM_DOOR } from './store/layout';
 import type { Placement } from './store/geometry';
 import { StoreLayout } from './store/store-layout';
 import type { Fixture, PlacementError } from './store/store-layout';
@@ -43,7 +47,11 @@ export type CommandError =
   /** 進貨單沒有任何品項 */
   | 'empty-order'
   /** 低於最低訂購量 */
-  | 'below-min-order';
+  | 'below-min-order'
+  /** 店員人數已達上限 */
+  | 'staff-full'
+  /** 找不到指定的店員 */
+  | 'unknown-staff';
 
 export type Result<T = void> = { ok: true; value: T } | { ok: false; error: CommandError };
 
@@ -53,6 +61,17 @@ const fail = (error: CommandError): Result<never> => ({ ok: false, error });
 export const STARTING_FUNDS = 30_000;
 /** 每個營業日的租金 */
 export const DAILY_RENT = 1_500;
+/** 每位店員的日薪 */
+export const DAILY_WAGE = 1_000;
+export const MAX_STAFF = 6;
+
+/** 受雇的店員（跨營業日存在） */
+export interface Staff {
+  readonly id: string;
+  readonly name: string;
+}
+
+const STAFF_NAMES = ['小林', '阿明', '小美', '阿傑', '小芳', '阿凱', '小婷', '阿豪'];
 
 export interface GameOptions {
   seed: number;
@@ -74,6 +93,10 @@ export class Game {
   private stepRemainderMs = 0;
   private ledger = new DayLedger(1, STARTING_FUNDS);
   private _lastReport: DailyReport | null = null;
+  private _staff: Staff[] = [];
+  private nextStaffId = 1;
+  private agents: StaffAgent[] = [];
+  private readonly reservedSlots = new Set<string>();
   private nextFixtureId = 1;
   private _version = 0;
   private readonly listeners = new Set<() => void>();
@@ -112,6 +135,20 @@ export class Game {
   /** 最近一次的每日結算；每日結算階段時即為當日 */
   get lastReport(): DailyReport | null {
     return this._lastReport;
+  }
+
+  /** 目前步長內已累積的比例（0–1），供畫面在兩步之間內插位置 */
+  get stepAlpha(): number {
+    return this._phase === 'open' ? this.stepRemainderMs / STEP_MS : 0;
+  }
+
+  get staff(): readonly Staff[] {
+    return this._staff;
+  }
+
+  /** 營業時段中的店員；其他階段為空 */
+  get staffAgents(): readonly StaffAgent[] {
+    return this.agents;
   }
 
   /** 已下單、尚未送達的進貨單 */
@@ -258,12 +295,33 @@ export class Game {
     return ok(order);
   }
 
-  /** 準備階段 → 營業時段 */
+  /** 雇用一位店員；日薪於每天打烊時支付 */
+  hireStaff(): Result<Staff> {
+    if (this._phase !== 'prep') return fail('not-prep-phase');
+    if (this._staff.length >= MAX_STAFF) return fail('staff-full');
+    const n = this.nextStaffId++;
+    const staff: Staff = { id: `s${n}`, name: STAFF_NAMES[(n - 1) % STAFF_NAMES.length] as string };
+    this._staff = [...this._staff, staff];
+    this.changed();
+    return ok(staff);
+  }
+
+  fireStaff(id: string): Result {
+    if (this._phase !== 'prep') return fail('not-prep-phase');
+    if (!this._staff.some((s) => s.id === id)) return fail('unknown-staff');
+    this._staff = this._staff.filter((s) => s.id !== id);
+    this.changed();
+    return ok(undefined);
+  }
+
+  /** 準備階段 → 營業時段：店員從倉庫門出發 */
   openStore(): Result {
     if (this._phase !== 'prep') return fail('not-prep-phase');
     this._phase = 'open';
     this._step = 0;
     this.stepRemainderMs = 0;
+    this.agents = this._staff.map((s) => new StaffAgent(s.id, BACKROOM_DOOR));
+    this.reservedSlots.clear();
     this.changed();
     return ok(undefined);
   }
@@ -287,14 +345,20 @@ export class Game {
 
   /** 推進一個固定步長；營業時段結束時打烊 */
   private advanceStep(): void {
+    for (const agent of this.agents) agent.update(this.staffWorld, this.reservedSlots);
     this._step++;
     if (this._step >= STEPS_PER_DAY) this.closeStore();
   }
 
   /** 營業時段 → 每日結算：支付固定支出並產生結算 */
   private closeStore(): void {
+    // 店員手上還沒上架的商品退回倉庫
+    for (const agent of this.agents) this.inventory.receive(agent.carrying);
+    this.agents = [];
+    this.reservedSlots.clear();
     this.ledger.rent = DAILY_RENT;
-    this._funds -= DAILY_RENT;
+    this.ledger.wages = this._staff.length * DAILY_WAGE;
+    this._funds -= this.ledger.rent + this.ledger.wages;
     this._phase = 'report';
     this._lastReport = this.ledger.toReport(this._funds);
     this.changed();
@@ -321,7 +385,41 @@ export class Game {
     return this.ledger.waste;
   }
 
-  /** 店員從倉庫補滿格位；回傳補上的數量（M5 由店員呼叫） */
+  private readonly staffWorld: StaffWorld = {
+    backroomDoor: BACKROOM_DOOR,
+    isWalkable: (p) => this.layout.isWalkable(p),
+    restockCandidates: () =>
+      this.layout.list().flatMap((f) => {
+        const capacity = FIXTURES[f.kind].slotCapacity;
+        return this.inventory.slots(f.id).flatMap((slot, slotIndex) =>
+          slot.productId
+            ? [
+                {
+                  fixtureId: f.id,
+                  slotIndex,
+                  productId: slot.productId,
+                  qty: totalQty(slot.batches),
+                  capacity,
+                  backroomQty: this.inventory.backroomQty(slot.productId),
+                },
+              ]
+            : [],
+        );
+      }),
+    slotAccessTile: (fixtureId, slotIndex) => {
+      const f = this.layout.get(fixtureId);
+      if (!f) return BACKROOM_DOOR;
+      return slotAccessTile(FIXTURES[f.kind], f, slotIndex);
+    },
+    takeFromBackroom: (productId, qty) => this.inventory.takeFromBackroom(productId, qty),
+    putIntoSlot: (fixtureId, slotIndex, batches) => {
+      const f = this.layout.get(fixtureId);
+      if (!f) return this.inventory.receive(batches);
+      this.inventory.putIntoSlot(fixtureId, slotIndex, batches, FIXTURES[f.kind].slotCapacity);
+    },
+  };
+
+  /** 直接從倉庫補滿格位（略過店員）；回傳補上的數量。供測試布置情境用 */
   restockSlot(fixtureId: string, index: number): number {
     const fixture = this.layout.get(fixtureId);
     if (!fixture) return 0;

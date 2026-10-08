@@ -8,6 +8,9 @@ import './styles.css';
 
 const controller = new Controller(new Game({ seed: Date.now() }), new Interaction());
 
+// 開發模式下方便在 console 檢查與布置狀態
+if (import.meta.env.DEV) Object.assign(window, { __game: controller.game });
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App controller={controller} />

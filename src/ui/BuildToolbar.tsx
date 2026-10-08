@@ -1,5 +1,5 @@
 import { FIXTURES, FIXTURE_KINDS } from '../sim/catalog/fixtures';
-import { sellRefund } from '../sim/game';
+import { DAILY_WAGE, MAX_STAFF, sellRefund } from '../sim/game';
 import type { Controller } from './controller';
 import { useGameVersion, useInteraction } from './hooks';
 import { SlotPanel } from './SlotPanel';
@@ -60,6 +60,17 @@ export function BuildToolbar({ controller }: { controller: Controller }) {
             </button>
           );
         })}
+        <span className="divider" />
+        <span className="staff-group">
+          店員 {game.staff.length}/{MAX_STAFF}
+          <small>日薪 {formatMoney(DAILY_WAGE)}/人</small>
+        </span>
+        <button onClick={() => controller.hire()} disabled={game.staff.length >= MAX_STAFF} aria-label="雇用店員">
+          ＋
+        </button>
+        <button onClick={() => controller.fireLast()} disabled={game.staff.length === 0} aria-label="解雇店員">
+          －
+        </button>
         <span className="hint">
           {tool.mode === 'place' ? '左鍵放置 · R 旋轉 · 右鍵 / Esc 取消' : '點選設施以旋轉、移動或出售'}
         </span>

@@ -59,6 +59,9 @@ body,
 .toolbar,
 .panel {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 100%;
   align-items: center;
   gap: 8px;
   padding: 8px;
@@ -353,4 +356,28 @@ button {
   .toolbar button {
     min-width: 0;
   }
+}
+
+.divider {
+  align-self: stretch;
+  width: 1px;
+  background: #4a5060;
+}
+
+.staff-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 4px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.staff-group small {
+  opacity: 0.6;
+  font-size: 11px;
+}
+
+.toolbar button[aria-label$='店員'] {
+  min-width: 36px;
 }

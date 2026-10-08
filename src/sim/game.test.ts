@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { FIXTURES } from './catalog/fixtures';
 import { Game, STARTING_FUNDS, sellRefund } from './game';
-import { ENTRANCE, STORE_DEPTH, STORE_WIDTH } from './store/layout';
+import { BACKROOM_DOOR, ENTRANCE, STORE_DEPTH, STORE_WIDTH } from './store/layout';
 
 const newGame = () => new Game({ seed: 1 });
 
@@ -53,11 +53,26 @@ describe('擺放設施', () => {
 
   it('會把其他設施的取用格圍死的擺放被拒', () => {
     const game = newGame();
-    // 貨架 A 靠左後角，取用格 (0,1)(1,1)；貨架 B 擋住下方
-    expect(game.placeFixture('shelf', { origin: { x: 0, y: 0 }, facing: 'south' }).ok).toBe(true);
-    expect(game.placeFixture('shelf', { origin: { x: 0, y: 2 }, facing: 'south' }).ok).toBe(true);
-    // 收銀台堵住 (2,1)，A 的取用格便無路可達
-    const r = game.placeFixture('register', { origin: { x: 2, y: 1 }, facing: 'north' });
+    // 貨架 A 靠右後角，取用格 (10,1)(11,1)；貨架 B 擋住下方
+    expect(game.placeFixture('shelf', { origin: { x: 10, y: 0 }, facing: 'south' }).ok).toBe(true);
+    expect(game.placeFixture('shelf', { origin: { x: 10, y: 2 }, facing: 'south' }).ok).toBe(true);
+    // 收銀台堵住 (9,1)，A 的取用格便無路可達
+    const r = game.placeFixture('register', { origin: { x: 9, y: 1 }, facing: 'west' });
+    expect(r).toEqual({ ok: false, error: 'unreachable' });
+  });
+
+  it('不能放在倉庫門上', () => {
+    const game = newGame();
+    const r = game.placeFixture('register', { origin: BACKROOM_DOOR, facing: 'east' });
+    expect(r).toEqual({ ok: false, error: 'blocks-backroom-door' });
+  });
+
+  it('不能讓倉庫門無路可達', () => {
+    const game = newGame();
+    // 倉庫門 (0,2)；上下用貨架堵住，右側再放一個就封死
+    expect(game.placeFixture('shelf', { origin: { x: 0, y: 1 }, facing: 'north' }).ok).toBe(true);
+    expect(game.placeFixture('shelf', { origin: { x: 0, y: 3 }, facing: 'south' }).ok).toBe(true);
+    const r = game.placeFixture('register', { origin: { x: 1, y: 2 }, facing: 'east' });
     expect(r).toEqual({ ok: false, error: 'unreachable' });
   });
 
