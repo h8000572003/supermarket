@@ -7,7 +7,7 @@ import { playThroughDay, runOpenHours } from './test-helpers';
 
 /** 冷藏櫃（4 格）放可樂；倉庫有 qty 瓶可樂（第 2 天送達） */
 function storeWithCola(qty: number, staffCount: number) {
-  const game = new Game({ seed: 1 });
+  const game = new Game({ seed: 1, customerArrivals: false });
   const fridge = game.placeFixture('fridge', { origin: { x: 6, y: 3 }, facing: 'south' });
   if (!fridge.ok) throw new Error(fridge.error);
   game.submitPurchaseOrder([{ productId: 'cola', qty }]);

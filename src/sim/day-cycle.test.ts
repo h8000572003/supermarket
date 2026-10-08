@@ -106,7 +106,7 @@ describe('每日結算與固定支出', () => {
 
 describe('鮮食報廢', () => {
   function withRiceBalls() {
-    const game = newGame();
+    const game = new Game({ seed: 1, customerArrivals: false });
     game.unlockCategory('fresh');
     const fridge = game.placeFixture('fridge', { origin: { x: 2, y: 2 }, facing: 'south' });
     if (!fridge.ok) throw new Error(fridge.error);

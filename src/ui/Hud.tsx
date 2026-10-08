@@ -49,7 +49,14 @@ export function Hud({ game, interaction, onOpenStock }: HudProps) {
         )}
       </span>
       <span className="hud-meta">
-        第 {game.day} 天 · {PHASE_LABEL[game.phase]} · <span className="clock">{formatTime(game.minuteOfDay)}</span> · 資金{' '}
+        第 {game.day} 天 · {PHASE_LABEL[game.phase]} · <span className="clock">{formatTime(game.minuteOfDay)}</span>
+        {game.phase === 'open' && (
+          <>
+            {' '}
+            · 店內 {game.customerAgents.length} 人 · 今日營收 {formatMoney(game.todayRevenue)}
+          </>
+        )}{' '}
+        · 資金{' '}
         <strong className={game.funds < 0 ? 'negative' : ''}>{formatMoney(game.funds)}</strong>
       </span>
     </div>

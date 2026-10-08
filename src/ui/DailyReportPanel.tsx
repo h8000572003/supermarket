@@ -9,12 +9,15 @@ export function DailyReportPanel({ game }: { game: Game }) {
   const report = game.lastReport;
   if (game.phase !== 'report' || !report) return null;
   const change = report.fundsAtEnd - report.fundsAtStart;
+  const c = report.customers;
 
   return (
     <div className="modal-backdrop">
       <div className="modal" role="dialog" aria-label={`第 ${report.day} 天每日結算`}>
         <h2>第 {report.day} 天 每日結算</h2>
         <dl className="report">
+          <dt>營收</dt>
+          <dd className="positive">{formatMoney(report.revenue)}</dd>
           <dt>進貨支出</dt>
           <dd>{formatExpense(report.purchases)}</dd>
           <dt>租金</dt>
@@ -28,6 +31,18 @@ export function DailyReportPanel({ game }: { game: Game }) {
           </dd>
           <dt>目前資金</dt>
           <dd>{formatMoney(report.fundsAtEnd)}</dd>
+        </dl>
+        <dl className="report">
+          <dt>來客</dt>
+          <dd>{c.entered} 人</dd>
+          <dt>結帳</dt>
+          <dd>{c.served} 人</dd>
+          <dt>空手離開（缺貨或嫌貴）</dt>
+          <dd>{c.leftEmpty} 人</dd>
+          <dt>排隊太久放棄</dt>
+          <dd>{c.abandoned} 人</dd>
+          <dt>平均滿意度</dt>
+          <dd>{c.avgSatisfaction === null ? '—' : Math.round(c.avgSatisfaction)}</dd>
         </dl>
         {report.waste.length > 0 && (
           <p className="report-note">

@@ -1,13 +1,15 @@
 import { Application, Container, Graphics } from 'pixi.js';
 import { FIXTURES } from '../sim/catalog/fixtures';
 import type { FixtureKind } from '../sim/catalog/fixtures';
+import type { Walker } from '../sim/agents/walker';
 import type { Game } from '../sim/game';
 import { accessTiles, footprint, footprintTiles } from '../sim/store/geometry';
 import type { Placement } from '../sim/store/geometry';
 import { BACKROOM_DOOR, ENTRANCE, STORE_DEPTH, STORE_WIDTH, isInsideStore } from '../sim/store/layout';
 import type { GridPoint } from '../sim/store/layout';
 import type { Controller } from '../ui/controller';
-import { PersonSprite, STAFF_LOOK, loadAgentTextures } from './agent-sprites';
+import { PersonSprite, STAFF_LOOK, customerLook, loadAgentTextures } from './agent-sprites';
+import type { PersonLook } from './agent-sprites';
 import { createFixtureSprites, loadFixtureTextures } from './fixture-sprites';
 import type { FixtureStyle } from './fixture-sprites';
 import { TILE_HEIGHT, TILE_WIDTH, gridToScreen, screenToGrid, tileDiamond } from './iso';
@@ -99,17 +101,18 @@ export async function createStoreScene(host: HTMLElement, controller: Controller
   };
   redraw();
   const unsubscribeGame = game.subscribe(redraw);
+  const unsubscribeInteraction = interaction.subscribe(redraw);
 
-  // 店員位置每幀更新：在模擬的上一步與這一步之間內插
+  // 人物位置每幀更新：在模擬的上一步與這一步之間內插
   const agentSprites = new Map<string, PersonSprite>();
   app.ticker.add(() => {
     const alive = new Set<string>();
     const alpha = game.stepAlpha;
-    for (const agent of game.staffAgents) {
+    const sync = (agent: Walker, look: () => PersonLook): PersonSprite => {
       alive.add(agent.id);
       let sprite = agentSprites.get(agent.id);
       if (!sprite) {
-        sprite = new PersonSprite(STAFF_LOOK);
+        sprite = new PersonSprite(look());
         agentSprites.set(agent.id, sprite);
         objects.addChild(sprite);
       }
@@ -118,7 +121,15 @@ export async function createStoreScene(host: HTMLElement, controller: Controller
       const p = gridToScreen(x + 0.5, y + 0.5);
       sprite.position.set(p.x, p.y);
       sprite.zIndex = (x + y) * 10 + 5;
-      sprite.carrying = agent.carrying.length > 0;
+      return sprite;
+    };
+    for (const staff of game.staffAgents) {
+      sync(staff, () => STAFF_LOOK).carrying = staff.carrying.length > 0;
+    }
+    for (const customer of game.customerAgents) {
+      const sprite = sync(customer, () => customerLook(customer.id));
+      sprite.holdingBasket = customer.basket.length > 0 && !customer.outcome;
+      sprite.setMood(customer.mood);
     }
     for (const [id, sprite] of agentSprites) {
       if (alive.has(id)) continue;
@@ -126,7 +137,6 @@ export async function createStoreScene(host: HTMLElement, controller: Controller
       agentSprites.delete(id);
     }
   });
-  const unsubscribeInteraction = interaction.subscribe(redraw);
 
   return {
     destroy() {

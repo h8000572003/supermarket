@@ -1,8 +1,9 @@
-import { findPath } from '../pathfinding/grid';
 import type { Batch } from '../inventory/batch';
 import type { GridPoint } from '../store/layout';
+import type { Passable } from '../pathfinding/grid';
 import { chooseRestockTask, slotKey } from './restock';
 import type { RestockCandidate } from './restock';
+import { Walker } from './walker';
 
 /** 店員每步移動的格數（1x 下約每秒 2.5 格） */
 export const STAFF_SPEED = 0.25;
@@ -11,47 +12,53 @@ export const PICK_STEPS = 5;
 /** 上架所需步數 */
 export const STOCK_STEPS = 10;
 
-export type StaffActivity = 'idle' | 'to-backroom' | 'picking' | 'to-slot' | 'stocking';
+export type StaffActivity = 'idle' | 'to-backroom' | 'picking' | 'to-slot' | 'stocking' | 'to-register' | 'cashier';
 
 /** 店員在營業時段中需要的外部能力，由 Game 提供 */
 export interface StaffWorld {
   readonly backroomDoor: GridPoint;
-  isWalkable(p: GridPoint): boolean;
+  readonly isWalkable: Passable;
   restockCandidates(): RestockCandidate[];
   slotAccessTile(fixtureId: string, slotIndex: number): GridPoint;
   takeFromBackroom(productId: string, qty: number): Batch[];
   putIntoSlot(fixtureId: string, slotIndex: number, batches: readonly Batch[]): void;
 }
 
-interface Point {
-  x: number;
-  y: number;
-}
-
 /** 營業時段中，一位店員的位置與工作狀態 */
-export class StaffAgent {
+export class StaffAgent extends Walker {
   activity: StaffActivity = 'idle';
-  /** 目前位置（網格座標，整數為格子中心） */
-  readonly pos: Point;
-  /** 上一步的位置，供畫面內插 */
-  readonly prev: Point;
   task: RestockCandidate | null = null;
   carrying: Batch[] = [];
-  private path: GridPoint[] = [];
+  /** 收銀中或前往收銀的收銀台 */
+  registerId: string | null = null;
   private timer = 0;
 
-  constructor(
-    readonly id: string,
-    start: GridPoint,
-  ) {
-    this.pos = { x: start.x, y: start.y };
-    this.prev = { x: start.x, y: start.y };
+  constructor(id: string, start: GridPoint) {
+    super(id, start, STAFF_SPEED);
+  }
+
+  /** 沒拿著貨時可以被叫去收銀（會放棄尚未取貨的補貨工作） */
+  get availableForRegister(): boolean {
+    return this.registerId === null && this.carrying.length === 0 && this.activity !== 'stocking';
+  }
+
+  /** 指派去收銀台的店員側取用格 */
+  assignRegister(registerId: string, staffTile: GridPoint, world: StaffWorld, reserved: Set<string>): void {
+    this.dropTask(reserved);
+    this.registerId = registerId;
+    this.activity = 'to-register';
+    this.walkTo(staffTile, world.isWalkable);
+  }
+
+  /** 收銀台沒人排隊時解除收銀，回去補貨 */
+  releaseRegister(): void {
+    this.registerId = null;
+    this.activity = 'idle';
   }
 
   /** 推進一步；reserved 為所有店員已認領的格位 */
   update(world: StaffWorld, reserved: Set<string>): void {
-    this.prev.x = this.pos.x;
-    this.prev.y = this.pos.y;
+    this.beginStep();
 
     switch (this.activity) {
       case 'idle': {
@@ -59,7 +66,8 @@ export class StaffAgent {
         if (!task) return;
         this.task = task;
         reserved.add(slotKey(task.fixtureId, task.slotIndex));
-        this.walkTo(world, world.backroomDoor, 'to-backroom');
+        this.activity = 'to-backroom';
+        this.walkTo(world.backroomDoor, world.isWalkable);
         return;
       }
       case 'to-backroom':
@@ -72,8 +80,9 @@ export class StaffAgent {
         if (--this.timer > 0 || !this.task) return;
         const t = this.task;
         this.carrying = world.takeFromBackroom(t.productId, t.capacity - t.qty);
-        if (this.carrying.length === 0) return this.finish(reserved);
-        this.walkTo(world, world.slotAccessTile(t.fixtureId, t.slotIndex), 'to-slot');
+        if (this.carrying.length === 0) return this.dropTask(reserved);
+        this.activity = 'to-slot';
+        this.walkTo(world.slotAccessTile(t.fixtureId, t.slotIndex), world.isWalkable);
         return;
       }
       case 'to-slot':
@@ -86,41 +95,17 @@ export class StaffAgent {
         if (--this.timer > 0 || !this.task) return;
         world.putIntoSlot(this.task.fixtureId, this.task.slotIndex, this.carrying);
         this.carrying = [];
-        this.finish(reserved);
+        this.dropTask(reserved);
+        return;
+      case 'to-register':
+        if (this.move()) this.activity = 'cashier';
+        return;
+      case 'cashier':
         return;
     }
   }
 
-  private walkTo(world: StaffWorld, goal: GridPoint, activity: StaffActivity): void {
-    const here = { x: Math.round(this.pos.x), y: Math.round(this.pos.y) };
-    this.path = findPath(here, goal, (p) => world.isWalkable(p))?.slice(1) ?? [];
-    this.activity = activity;
-  }
-
-  /** 沿路徑前進；抵達終點時回傳 true */
-  private move(): boolean {
-    let budget = STAFF_SPEED;
-    while (budget > 0) {
-      const next = this.path[0];
-      if (!next) return true;
-      const dx = next.x - this.pos.x;
-      const dy = next.y - this.pos.y;
-      const dist = Math.hypot(dx, dy);
-      if (dist <= budget) {
-        this.pos.x = next.x;
-        this.pos.y = next.y;
-        this.path.shift();
-        budget -= dist;
-      } else {
-        this.pos.x += (dx / dist) * budget;
-        this.pos.y += (dy / dist) * budget;
-        budget = 0;
-      }
-    }
-    return this.path.length === 0;
-  }
-
-  private finish(reserved: Set<string>): void {
+  private dropTask(reserved: Set<string>): void {
     if (this.task) reserved.delete(slotKey(this.task.fixtureId, this.task.slotIndex));
     this.task = null;
     this.activity = 'idle';

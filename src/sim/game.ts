@@ -2,9 +2,14 @@ import { FIXTURES, SELL_REFUND_RATE } from './catalog/fixtures';
 import type { FixtureKind } from './catalog/fixtures';
 import { CATEGORIES, PRODUCTS, STARTING_CATEGORIES, productById } from './catalog/products';
 import type { CategoryId } from './catalog/products';
+import { Checkout } from './agents/checkout';
+import type { RegisterSpot } from './agents/checkout';
+import { CustomerAgent } from './agents/customer';
+import type { CustomerWorld } from './agents/customer';
+import { LAST_ENTRY_BEFORE_CLOSE, MAX_CUSTOMERS_IN_STORE, arrivalsPerHour, rollShoppingList } from './agents/demand';
 import { StaffAgent } from './agents/staff';
 import type { StaffWorld } from './agents/staff';
-import { MAX_STEPS_PER_TICK, STEPS_PER_DAY, STEP_MS, minuteOfDay } from './clock/clock';
+import { CLOSE_MINUTE, MAX_STEPS_PER_TICK, MINUTES_PER_STEP, STEPS_PER_DAY, STEP_MS, minuteOfDay } from './clock/clock';
 import type { Speed } from './clock/clock';
 import { orderTotal } from './economy/purchase-order';
 import type { OrderLine, PurchaseOrder } from './economy/purchase-order';
@@ -15,8 +20,10 @@ import { DayLedger } from './report/daily-report';
 import type { DailyReport, WasteLine } from './report/daily-report';
 import { Rng } from './rng';
 import { totalQty } from './inventory/batch';
-import { rotateClockwise, slotAccessTile } from './store/geometry';
-import { BACKROOM_DOOR } from './store/layout';
+import { customerAccessTiles, rotateClockwise, slotAccessTile, staffAccessTiles } from './store/geometry';
+import type { Facing } from './store/geometry';
+import { BACKROOM_DOOR, ENTRANCE } from './store/layout';
+import type { GridPoint } from './store/layout';
 import type { Placement } from './store/geometry';
 import { StoreLayout } from './store/store-layout';
 import type { Fixture, PlacementError } from './store/store-layout';
@@ -73,8 +80,20 @@ export interface Staff {
 
 const STAFF_NAMES = ['小林', '阿明', '小美', '阿傑', '小芳', '阿凱', '小婷', '阿豪'];
 
+/** 顧客排隊耐心（步數）的範圍 */
+const PATIENCE_RANGE: readonly [number, number] = [80, 140];
+
+const FACING_DIR: Record<Facing, GridPoint> = {
+  north: { x: 0, y: -1 },
+  east: { x: 1, y: 0 },
+  south: { x: 0, y: 1 },
+  west: { x: -1, y: 0 },
+};
+
 export interface GameOptions {
   seed: number;
+  /** 是否有顧客進店；預設 true。測試只想看店員行為時可關閉 */
+  customerArrivals?: boolean;
 }
 
 /** 模擬核心的唯一入口：commands 改變狀態、唯讀 getter 查詢、subscribe 監聽變化 */
@@ -96,13 +115,21 @@ export class Game {
   private _staff: Staff[] = [];
   private nextStaffId = 1;
   private agents: StaffAgent[] = [];
+  private customers: CustomerAgent[] = [];
+  private nextCustomerId = 1;
+  private checkout = new Checkout([], () => false);
   private readonly reservedSlots = new Set<string>();
   private nextFixtureId = 1;
   private _version = 0;
   private readonly listeners = new Set<() => void>();
 
+  private readonly customerWorld: CustomerWorld;
+  private readonly customerArrivals: boolean;
+
   constructor(options: GameOptions) {
     this.rng = Rng.fromSeed(options.seed);
+    this.customerArrivals = options.customerArrivals ?? true;
+    this.customerWorld = this.createCustomerWorld();
   }
 
   get funds(): number {
@@ -149,6 +176,21 @@ export class Game {
   /** 營業時段中的店員；其他階段為空 */
   get staffAgents(): readonly StaffAgent[] {
     return this.agents;
+  }
+
+  /** 營業時段中店內的顧客 */
+  get customerAgents(): readonly CustomerAgent[] {
+    return this.customers;
+  }
+
+  /** 收銀台目前排隊人數 */
+  queueLength(registerId: string): number {
+    return this.checkout.queueLength(registerId);
+  }
+
+  /** 今天到目前為止的帳目（營業中即時顯示用） */
+  get todayRevenue(): number {
+    return this.ledger.revenue;
   }
 
   /** 已下單、尚未送達的進貨單 */
@@ -322,6 +364,8 @@ export class Game {
     this.stepRemainderMs = 0;
     this.agents = this._staff.map((s) => new StaffAgent(s.id, BACKROOM_DOOR));
     this.reservedSlots.clear();
+    this.customers = [];
+    this.checkout = new Checkout(this.registerSpots(), (p) => this.layout.isWalkable(p));
     this.changed();
     return ok(undefined);
   }
@@ -345,13 +389,25 @@ export class Game {
 
   /** 推進一個固定步長；營業時段結束時打烊 */
   private advanceStep(): void {
+    this.maybeSpawnCustomer();
+    this.checkout.update(this.agents, this.staffWorld, this.reservedSlots, this.customerWorld, (c) => {
+      for (const item of c.basket) {
+        this.ledger.recordSale(item.productId, item.price);
+        this._funds += item.price;
+      }
+    });
     for (const agent of this.agents) agent.update(this.staffWorld, this.reservedSlots);
+    for (const customer of this.customers) customer.update(this.customerWorld);
+    this.removeDepartedCustomers();
     this._step++;
     if (this._step >= STEPS_PER_DAY) this.closeStore();
   }
 
   /** 營業時段 → 每日結算：支付固定支出並產生結算 */
   private closeStore(): void {
+    // 還在店內的顧客離開，未結帳的商品退回倉庫
+    for (const c of this.customers) c.forceLeave(this.customerWorld);
+    this.removeDepartedCustomers();
     // 店員手上還沒上架的商品退回倉庫
     for (const agent of this.agents) this.inventory.receive(agent.carrying);
     this.agents = [];
@@ -383,6 +439,67 @@ export class Game {
   /** 今天開始時報廢的商品 */
   get todayWaste(): readonly WasteLine[] {
     return this.ledger.waste;
+  }
+
+  private maybeSpawnCustomer(): void {
+    const minute = this.minuteOfDay;
+    if (!this.customerArrivals) return;
+    if (minute >= CLOSE_MINUTE - LAST_ENTRY_BEFORE_CLOSE || this.customers.length >= MAX_CUSTOMERS_IN_STORE) return;
+    const perStep = (arrivalsPerHour(minute) * MINUTES_PER_STEP) / 60;
+    if (!this.rng.chance(perStep)) return;
+    const list = rollShoppingList(this.rng, [...this.unlocked]);
+    const patience = this.rng.int(...PATIENCE_RANGE);
+    this.customers.push(new CustomerAgent(`c${this.nextCustomerId++}`, list, patience, this.customerWorld));
+    this.ledger.entered++;
+  }
+
+  private removeDepartedCustomers(): void {
+    this.customers = this.customers.filter((c) => {
+      if (c.activity !== 'gone') return true;
+      if (c.outcome) this.ledger.recordCustomer(c.outcome, c.satisfaction);
+      return false;
+    });
+  }
+
+  private registerSpots(): RegisterSpot[] {
+    return this.layout
+      .list()
+      .filter((f) => f.kind === 'register')
+      .map((f) => ({
+        id: f.id,
+        customerTile: customerAccessTiles(FIXTURES.register, f)[0] as GridPoint,
+        staffTile: staffAccessTiles(FIXTURES.register, f)[0] as GridPoint,
+        queueDir: FACING_DIR[f.facing],
+      }));
+  }
+
+  private createCustomerWorld(): CustomerWorld {
+    return {
+    entrance: ENTRANCE,
+    isWalkable: (p) => this.layout.isWalkable(p),
+    rng: this.rng,
+    offersFor: (category) =>
+      this.layout.list().flatMap((f) =>
+        this.inventory.slots(f.id).flatMap((slot, slotIndex) => {
+          const product = slot.productId ? productById(slot.productId) : undefined;
+          if (!product || product.category !== category || totalQty(slot.batches) === 0) return [];
+          return [{ fixtureId: f.id, slotIndex, accessTile: slotAccessTile(FIXTURES[f.kind], f, slotIndex) }];
+        }),
+      ),
+    slotContent: (fixtureId, slotIndex) => {
+      const slot = this.inventory.slot(fixtureId, slotIndex);
+      return slot?.productId ? { productId: slot.productId, qty: totalQty(slot.batches) } : null;
+    },
+    pricing: (productId) => ({
+      salePrice: this.salePrices.get(productId) ?? 0,
+      suggestedPrice: productById(productId)?.suggestedPrice ?? 1,
+    }),
+    takeOne: (fixtureId, slotIndex) => this.inventory.takeFromSlot(fixtureId, slotIndex, 1),
+    returnToBackroom: (batches) => this.inventory.receive(batches),
+    joinQueue: (c) => this.checkout.join(c),
+    leaveQueue: (c) => this.checkout.leave(c),
+    queueTile: (c) => this.checkout.queueTile(c),
+  };
   }
 
   private readonly staffWorld: StaffWorld = {
