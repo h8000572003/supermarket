@@ -5,11 +5,13 @@ import { BuildToolbar } from './ui/BuildToolbar';
 import { DailyReportPanel } from './ui/DailyReportPanel';
 import type { Controller } from './ui/controller';
 import { Hud } from './ui/Hud';
+import { MilestonesPanel } from './ui/MilestonesPanel';
 import { StockPanel } from './ui/StockPanel';
 
 export function App({ controller }: { controller: Controller }) {
   const hostRef = useRef<HTMLDivElement>(null);
-  const [stockOpen, setStockOpen] = useState(false);
+  const [panel, setPanel] = useState<'stock' | 'milestones' | null>(null);
+  const toggle = (p: 'stock' | 'milestones') => setPanel((cur) => (cur === p ? null : p));
 
   useEffect(() => {
     const host = hostRef.current;
@@ -51,9 +53,15 @@ export function App({ controller }: { controller: Controller }) {
   return (
     <>
       <div ref={hostRef} className="stage" />
-      <Hud game={controller.game} interaction={controller.interaction} onOpenStock={() => setStockOpen((o) => !o)} />
+      <Hud
+        game={controller.game}
+        interaction={controller.interaction}
+        onOpenStock={() => toggle('stock')}
+        onOpenMilestones={() => toggle('milestones')}
+      />
       <BuildToolbar controller={controller} />
-      {stockOpen && <StockPanel controller={controller} onClose={() => setStockOpen(false)} />}
+      {panel === 'stock' && <StockPanel controller={controller} onClose={() => setPanel(null)} />}
+      {panel === 'milestones' && <MilestonesPanel game={controller.game} onClose={() => setPanel(null)} />}
       <DailyReportPanel game={controller.game} />
     </>
   );

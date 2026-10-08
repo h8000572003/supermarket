@@ -16,6 +16,14 @@ import type { OrderLine, PurchaseOrder } from './economy/purchase-order';
 import { isExpired } from './inventory/expiry';
 import { Inventory } from './inventory/inventory';
 import type { Slot } from './inventory/inventory';
+import {
+  BANKRUPTCY_DAYS,
+  MILESTONES,
+  STARTING_REPUTATION,
+  arrivalMultiplier,
+  nextReputation,
+} from './progress/progress';
+import type { MilestoneContext } from './progress/progress';
 import { DayLedger } from './report/daily-report';
 import type { DailyReport, WasteLine } from './report/daily-report';
 import { Rng } from './rng';
@@ -28,8 +36,8 @@ import type { Placement } from './store/geometry';
 import { StoreLayout } from './store/store-layout';
 import type { Fixture, PlacementError } from './store/store-layout';
 
-/** 營業日的階段：準備階段 → 營業時段 → 每日結算 */
-export type Phase = 'prep' | 'open' | 'report';
+/** 營業日的階段：準備階段 → 營業時段 → 每日結算；破產後為 gameover */
+export type Phase = 'prep' | 'open' | 'report' | 'gameover';
 
 export type CommandError =
   | PlacementError
@@ -94,6 +102,8 @@ export interface GameOptions {
   seed: number;
   /** 是否有顧客進店；預設 true。測試只想看店員行為時可關閉 */
   customerArrivals?: boolean;
+  /** 起始口碑（0–100）；預設 STARTING_REPUTATION */
+  startingReputation?: number;
 }
 
 /** 模擬核心的唯一入口：commands 改變狀態、唯讀 getter 查詢、subscribe 監聽變化 */
@@ -112,6 +122,11 @@ export class Game {
   private stepRemainderMs = 0;
   private ledger = new DayLedger(1, STARTING_FUNDS);
   private _lastReport: DailyReport | null = null;
+  private _reputation = STARTING_REPUTATION;
+  private totalRevenue = 0;
+  private bestServed = 0;
+  private negativeDays = 0;
+  private readonly achieved = new Set<string>();
   private _staff: Staff[] = [];
   private nextStaffId = 1;
   private agents: StaffAgent[] = [];
@@ -129,6 +144,7 @@ export class Game {
   constructor(options: GameOptions) {
     this.rng = Rng.fromSeed(options.seed);
     this.customerArrivals = options.customerArrivals ?? true;
+    this._reputation = options.startingReputation ?? STARTING_REPUTATION;
     this.customerWorld = this.createCustomerWorld();
   }
 
@@ -162,6 +178,20 @@ export class Game {
   /** 最近一次的每日結算；每日結算階段時即為當日 */
   get lastReport(): DailyReport | null {
     return this._lastReport;
+  }
+
+  /** 店舖口碑（0–100），決定來客倍率 */
+  get reputation(): number {
+    return this._reputation;
+  }
+
+  /** 里程碑判斷所需的累計成績 */
+  get milestoneContext(): MilestoneContext {
+    return { totalRevenue: this.totalRevenue, reputation: this._reputation, bestServed: this.bestServed };
+  }
+
+  isMilestoneAchieved(id: string): boolean {
+    return this.achieved.has(id);
   }
 
   /** 目前步長內已累積的比例（0–1），供畫面在兩步之間內插位置 */
@@ -202,7 +232,7 @@ export class Game {
     return this.unlocked.has(category);
   }
 
-  /** 解鎖商品類別（里程碑獎勵，M6 由進度系統呼叫） */
+  /** 直接解鎖商品類別（略過里程碑）；供測試布置情境用 */
   unlockCategory(category: CategoryId): void {
     if (this.unlocked.has(category)) return;
     this.unlocked.add(category);
@@ -415,9 +445,37 @@ export class Game {
     this.ledger.rent = DAILY_RENT;
     this.ledger.wages = this._staff.length * DAILY_WAGE;
     this._funds -= this.ledger.rent + this.ledger.wages;
-    this._phase = 'report';
-    this._lastReport = this.ledger.toReport(this._funds);
+
+    const reputationBefore = this._reputation;
+    this._reputation = nextReputation(this._reputation, this.ledger.avgSatisfaction);
+    this.totalRevenue += this.ledger.revenue;
+    this.bestServed = Math.max(this.bestServed, this.ledger.served);
+    const milestonesReached = this.checkMilestones();
+    this.negativeDays = this._funds < 0 ? this.negativeDays + 1 : 0;
+    const bankrupt = this.negativeDays >= BANKRUPTCY_DAYS;
+
+    this._phase = bankrupt ? 'gameover' : 'report';
+    this._lastReport = this.ledger.toReport(this._funds, {
+      reputationBefore,
+      reputationAfter: this._reputation,
+      milestonesReached,
+      negativeDays: this.negativeDays,
+      bankrupt,
+    });
     this.changed();
+  }
+
+  /** 檢查新達成的里程碑並發放解鎖；回傳新達成的 id */
+  private checkMilestones(): string[] {
+    const ctx = this.milestoneContext;
+    const reached: string[] = [];
+    for (const m of MILESTONES) {
+      if (this.achieved.has(m.id) || m.progress(ctx) < 1) continue;
+      this.achieved.add(m.id);
+      if (m.unlocks) this.unlocked.add(m.unlocks);
+      reached.push(m.id);
+    }
+    return reached;
   }
 
   /** 每日結算 → 下一個營業日的準備階段：送達進貨、報廢過期鮮食 */
@@ -445,7 +503,7 @@ export class Game {
     const minute = this.minuteOfDay;
     if (!this.customerArrivals) return;
     if (minute >= CLOSE_MINUTE - LAST_ENTRY_BEFORE_CLOSE || this.customers.length >= MAX_CUSTOMERS_IN_STORE) return;
-    const perStep = (arrivalsPerHour(minute) * MINUTES_PER_STEP) / 60;
+    const perStep = (arrivalsPerHour(minute) * arrivalMultiplier(this._reputation) * MINUTES_PER_STEP) / 60;
     if (!this.rng.chance(perStep)) return;
     const list = rollShoppingList(this.rng, [...this.unlocked]);
     const patience = this.rng.int(...PATIENCE_RANGE);
@@ -456,7 +514,7 @@ export class Game {
   private removeDepartedCustomers(): void {
     this.customers = this.customers.filter((c) => {
       if (c.activity !== 'gone') return true;
-      if (c.outcome) this.ledger.recordCustomer(c.outcome, c.satisfaction);
+      if (c.outcome) this.ledger.recordCustomer(c.outcome, c.satisfaction, c.stockoutCategories);
       return false;
     });
   }
@@ -486,6 +544,12 @@ export class Game {
           return [{ fixtureId: f.id, slotIndex, accessTile: slotAccessTile(FIXTURES[f.kind], f, slotIndex) }];
         }),
       ),
+    carries: (category) =>
+      this.layout
+        .list()
+        .some((f) =>
+          this.inventory.slots(f.id).some((slot) => slot.productId && productById(slot.productId)?.category === category),
+        ),
     slotContent: (fixtureId, slotIndex) => {
       const slot = this.inventory.slot(fixtureId, slotIndex);
       return slot?.productId ? { productId: slot.productId, qty: totalQty(slot.batches) } : null;

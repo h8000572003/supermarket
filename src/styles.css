@@ -381,3 +381,119 @@ button {
 .toolbar button[aria-label$='店員'] {
   min-width: 36px;
 }
+
+.report-modal {
+  width: min(420px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+}
+
+.report-modal section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.report-modal h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  opacity: 0.6;
+}
+
+.report .total {
+  padding-top: 4px;
+  border-top: 1px solid #343946;
+  font-weight: 700;
+}
+
+.report-alert,
+.report-milestone {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.report-alert {
+  background: rgb(138 63 60 / 0.45);
+}
+
+.report-milestone {
+  background: rgb(201 162 63 / 0.25);
+}
+
+.bars,
+.milestones {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+}
+
+.bars li {
+  display: grid;
+  grid-template-columns: 4em 1fr 3em;
+  align-items: center;
+  gap: 8px;
+}
+
+.bar {
+  display: block;
+  height: 8px;
+  border-radius: 4px;
+  background: #2b2f3a;
+  overflow: hidden;
+}
+
+.bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: #c9a23f;
+}
+
+.bar-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.milestones-panel {
+  bottom: auto;
+  width: min(360px, calc(100vw - 24px));
+}
+
+.milestones {
+  gap: 14px;
+  padding: 4px 14px 16px;
+}
+
+.milestones li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.milestones li.done .bar > span {
+  background: #5fb37a;
+}
+
+.milestone-head {
+  display: flex;
+  justify-content: space-between;
+}
+
+.milestone-goal {
+  font-size: 13px;
+  opacity: 0.75;
+}
+
+@media (max-width: 720px) {
+  .side-panel {
+    top: 124px;
+  }
+}

@@ -23,7 +23,7 @@ export const ERROR_MESSAGES: Record<CommandError, string> = {
   'unknown-staff': '找不到這位店員',
 };
 
-export const formatMoney = (n: number) => `$${n.toLocaleString('zh-TW')}`;
+export const formatMoney = (n: number) => `${n < 0 ? '−' : ''}$${Math.abs(n).toLocaleString('zh-TW')}`;
 
 /** 一天中的分鐘數 → HH:MM */
 export const formatTime = (minuteOfDay: number) => {

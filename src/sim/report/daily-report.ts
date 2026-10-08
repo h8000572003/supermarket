@@ -1,3 +1,5 @@
+import type { CategoryId } from '../catalog/products';
+
 /** 單一商品的報廢 */
 export interface WasteLine {
   readonly productId: string;
@@ -20,15 +22,25 @@ export interface CustomerStats {
   readonly avgSatisfaction: number | null;
 }
 
-/**
- * 每日結算：一個營業日的營運摘要。
- * M6 會補上口碑、缺貨排行等欄位。
- */
+/** 營業日結束時的進度變化 */
+export interface DayProgress {
+  readonly reputationBefore: number;
+  readonly reputationAfter: number;
+  /** 當天達成的里程碑 id */
+  readonly milestonesReached: readonly string[];
+  /** 連續資金為負的營業日數（含當天） */
+  readonly negativeDays: number;
+  readonly bankrupt: boolean;
+}
+
+/** 每日結算：一個營業日的營運摘要 */
 export interface DailyReport {
   readonly day: number;
   readonly revenue: number;
   /** 各商品售出數量 */
   readonly sales: Readonly<Record<string, number>>;
+  /** 各類別被顧客找不到的次數 */
+  readonly stockouts: Readonly<Partial<Record<CategoryId, number>>>;
   readonly customers: CustomerStats;
   /** 準備階段開始時的資金 */
   readonly fundsAtStart: number;
@@ -38,12 +50,14 @@ export interface DailyReport {
   readonly rent: number;
   readonly wages: number;
   readonly waste: readonly WasteLine[];
+  readonly progress: DayProgress;
 }
 
 /** 營業日進行中逐步累積的帳目 */
 export class DayLedger {
   revenue = 0;
   readonly sales = new Map<string, number>();
+  readonly stockouts = new Map<CategoryId, number>();
   entered = 0;
   served = 0;
   leftEmpty = 0;
@@ -65,7 +79,12 @@ export class DayLedger {
     this.sales.set(productId, (this.sales.get(productId) ?? 0) + 1);
   }
 
-  recordCustomer(outcome: 'served' | 'left-empty' | 'abandoned', satisfaction: number): void {
+  recordCustomer(
+    outcome: 'served' | 'left-empty' | 'abandoned',
+    satisfaction: number,
+    stockoutCategories: readonly CategoryId[],
+  ): void {
+    for (const c of stockoutCategories) this.stockouts.set(c, (this.stockouts.get(c) ?? 0) + 1);
     if (outcome === 'served') this.served++;
     else if (outcome === 'left-empty') this.leftEmpty++;
     else this.abandoned++;
@@ -73,17 +92,23 @@ export class DayLedger {
     this.satisfactionCount++;
   }
 
-  toReport(fundsAtEnd: number): DailyReport {
+  get avgSatisfaction(): number | null {
+    return this.satisfactionCount > 0 ? this.satisfactionSum / this.satisfactionCount : null;
+  }
+
+  toReport(fundsAtEnd: number, progress: DayProgress): DailyReport {
     return {
       day: this.day,
       revenue: this.revenue,
       sales: Object.fromEntries(this.sales),
+      stockouts: Object.fromEntries(this.stockouts),
+      progress,
       customers: {
         entered: this.entered,
         served: this.served,
         leftEmpty: this.leftEmpty,
         abandoned: this.abandoned,
-        avgSatisfaction: this.satisfactionCount > 0 ? this.satisfactionSum / this.satisfactionCount : null,
+        avgSatisfaction: this.avgSatisfaction,
       },
       fundsAtStart: this.fundsAtStart,
       fundsAtEnd,

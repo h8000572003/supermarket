@@ -39,6 +39,8 @@ export interface CustomerWorld {
   readonly rng: Rng;
   /** 陳列此類別商品且有陳列庫存的格位 */
   offersFor(category: CategoryId): ShelfOffer[];
+  /** 店裡是否有格位指定了此類別的商品（不論有沒有貨） */
+  carries(category: CategoryId): boolean;
   /** 格位上的商品與數量 */
   slotContent(fixtureId: string, slotIndex: number): { productId: string; qty: number } | null;
   pricing(productId: string): { salePrice: number; suggestedPrice: number };
@@ -58,7 +60,10 @@ export class CustomerAgent extends Walker {
   outcome: CustomerOutcome | null = null;
   satisfaction = 100;
   readonly basket: BasketItem[] = [];
-  stockouts = 0;
+  /** 店裡有賣、但架上沒貨的類別（缺貨） */
+  readonly stockoutCategories: CategoryId[] = [];
+  /** 店裡根本沒賣的類別 */
+  notCarried = 0;
   priceRejects = 0;
   waitSteps = 0;
   patience: number;
@@ -125,8 +130,13 @@ export class CustomerAgent extends Walker {
 
   /** 收銀完成 */
   paid(world: CustomerWorld): void {
-    this.satisfaction = clamp(100 - 35 * this.stockouts - 15 * this.priceRejects - Math.max(0, this.waitSteps - 30) * 0.5);
+    this.satisfaction = clamp(this.shoppingScore() - Math.max(0, this.waitSteps - 30) * 0.5);
     this.leave('served', world);
+  }
+
+  /** 購物過程的滿意度：缺貨扣最多、嫌貴次之、店裡沒賣扣最少 */
+  private shoppingScore(): number {
+    return 100 - 35 * this.stockoutCategories.length - 15 * this.priceRejects - 10 * this.notCarried;
   }
 
   /** 打烊時仍在店內：未結帳的商品退回倉庫 */
@@ -152,8 +162,12 @@ export class CustomerAgent extends Walker {
         this.walkTo(this.target.accessTile, world.isWalkable);
         return;
       }
-      this.stockouts++;
-      this.stockoutFlash = STOCKOUT_FLASH_STEPS;
+      if (world.carries(category)) {
+        this.stockoutCategories.push(category);
+        this.stockoutFlash = STOCKOUT_FLASH_STEPS;
+      } else {
+        this.notCarried++;
+      }
       this.advanceList();
     }
     this.finishShopping(world);
@@ -185,7 +199,7 @@ export class CustomerAgent extends Walker {
 
   private finishShopping(world: CustomerWorld): void {
     if (this.basket.length === 0) {
-      this.satisfaction = Math.min(30, clamp(100 - 35 * this.stockouts - 15 * this.priceRejects));
+      this.satisfaction = Math.min(40, clamp(this.shoppingScore()));
       return this.leave('left-empty', world);
     }
     if (!world.joinQueue(this)) {
