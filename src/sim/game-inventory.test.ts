@@ -3,6 +3,7 @@ import { FIXTURES } from './catalog/fixtures';
 import { productById } from './catalog/products';
 import { SHIPPING_FEE } from './economy/purchase-order';
 import { Game, STARTING_FUNDS } from './game';
+import { playThroughDay } from './test-helpers';
 
 function setup() {
   const game = new Game({ seed: 1 });
@@ -21,7 +22,7 @@ describe('進貨單', () => {
     expect(game.backroomQty('cola')).toBe(0);
     expect(game.pendingOrders).toHaveLength(1);
 
-    game.advanceDay();
+    playThroughDay(game);
     expect(game.day).toBe(2);
     expect(game.backroomQty('cola')).toBe(24);
     expect(game.pendingOrders).toHaveLength(0);
@@ -80,9 +81,9 @@ describe('格位', () => {
   it('補貨以先進先出從倉庫補到容量上限', () => {
     const { game, fridgeId } = setup();
     game.submitPurchaseOrder([{ productId: 'cola', qty: 12 }]);
-    game.advanceDay(); // 第 2 天送達 12
+    playThroughDay(game); // 第 2 天送達 12
     game.submitPurchaseOrder([{ productId: 'cola', qty: 12 }]);
-    game.advanceDay(); // 第 3 天送達 12
+    playThroughDay(game); // 第 3 天送達 12
     game.assignSlot(fridgeId, 0, 'cola');
 
     expect(game.restockSlot(fridgeId, 0)).toBe(FIXTURES.fridge.slotCapacity);
@@ -94,7 +95,7 @@ describe('格位', () => {
   it('改指定其他商品時，原本的陳列庫存退回倉庫', () => {
     const { game, fridgeId } = setup();
     game.submitPurchaseOrder([{ productId: 'cola', qty: 12 }]);
-    game.advanceDay();
+    playThroughDay(game);
     game.assignSlot(fridgeId, 0, 'cola');
     game.restockSlot(fridgeId, 0);
     game.assignSlot(fridgeId, 0, 'water');
@@ -105,7 +106,7 @@ describe('格位', () => {
   it('出售陳列櫃時，陳列庫存退回倉庫', () => {
     const { game, fridgeId } = setup();
     game.submitPurchaseOrder([{ productId: 'cola', qty: 12 }]);
-    game.advanceDay();
+    playThroughDay(game);
     game.assignSlot(fridgeId, 0, 'cola');
     game.restockSlot(fridgeId, 0);
     game.sellFixture(fridgeId);
@@ -115,7 +116,7 @@ describe('格位', () => {
   it('移動陳列櫃保留陳列庫存', () => {
     const { game, shelfId } = setup();
     game.submitPurchaseOrder([{ productId: 'chips', qty: 6 }]);
-    game.advanceDay();
+    playThroughDay(game);
     game.assignSlot(shelfId, 1, 'chips');
     game.restockSlot(shelfId, 1);
     game.moveFixture(shelfId, { origin: { x: 2, y: 6 }, facing: 'north' });

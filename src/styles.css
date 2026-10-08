@@ -262,3 +262,95 @@ select {
   width: 5em;
   text-align: right;
 }
+
+.speed-group {
+  display: flex;
+  gap: 2px;
+}
+
+.speed-group button {
+  min-width: 40px;
+}
+
+button.active {
+  border-color: #ffd86b;
+  background: #4b4532;
+}
+
+.clock {
+  font-weight: 600;
+}
+
+.negative {
+  color: #ff8a80 !important;
+}
+
+.positive {
+  color: #8be0a0;
+}
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgb(10 12 16 / 0.55);
+}
+
+.modal {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: min(380px, calc(100vw - 32px));
+  padding: 20px 22px;
+  border-radius: 10px;
+  background: #1b1e25;
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.4);
+}
+
+.modal h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.report {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 16px;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.report dt {
+  opacity: 0.75;
+}
+
+.report dd {
+  margin: 0;
+  text-align: right;
+}
+
+.report-note {
+  margin: 0;
+  font-size: 13px;
+  opacity: 0.8;
+}
+
+button {
+  white-space: nowrap;
+}
+
+.hud {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+@media (max-width: 720px) {
+  .toolbar button ~ .hint {
+    display: none;
+  }
+
+  .toolbar button {
+    min-width: 0;
+  }
+}

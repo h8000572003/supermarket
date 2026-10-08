@@ -79,6 +79,25 @@ export class Inventory {
     return taken;
   }
 
+  /** 移除倉庫與所有格位中符合條件的批次；回傳被移除的批次 */
+  removeBatches(shouldRemove: (batch: Batch) => boolean): Batch[] {
+    const removed: Batch[] = [];
+    const keep = (batches: readonly Batch[]) =>
+      batches.filter((b) => {
+        if (!shouldRemove(b)) return true;
+        removed.push(b);
+        return false;
+      });
+    for (const [productId, batches] of this.backroom) this.backroom.set(productId, keep(batches));
+    for (const [fixtureId, slots] of this.displays) {
+      this.displays.set(
+        fixtureId,
+        slots.map((s) => ({ ...s, batches: keep(s.batches) })),
+      );
+    }
+    return removed;
+  }
+
   private setSlot(fixtureId: string, index: number, slot: Slot): void {
     const slots = this.displays.get(fixtureId);
     if (!slots) return;

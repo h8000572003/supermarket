@@ -12,6 +12,7 @@ export function StockPanel({ controller, onClose }: { controller: Controller; on
   const [qty, setQty] = useState<Record<string, number>>({});
   const [priceDraft, setPriceDraft] = useState<Record<string, string>>({});
 
+  const editable = game.phase === 'prep';
   const lines = Object.entries(qty)
     .filter(([, q]) => q > 0)
     .map(([productId, q]) => ({ productId, qty: q }));
@@ -81,7 +82,7 @@ export function StockPanel({ controller, onClose }: { controller: Controller; on
                     type="number"
                     min={1}
                     value={priceDraft[p.id] ?? game.salePrice(p.id)}
-                    disabled={!unlocked}
+                    disabled={!unlocked || !editable}
                     onChange={(e) => setPriceDraft((d) => ({ ...d, [p.id]: e.target.value }))}
                     onBlur={() => commitPrice(p.id)}
                     onKeyDown={(e) => e.key === 'Enter' && commitPrice(p.id)}
@@ -96,7 +97,7 @@ export function StockPanel({ controller, onClose }: { controller: Controller; on
                     step={p.minOrder}
                     placeholder={`≥${p.minOrder}`}
                     value={qty[p.id] || ''}
-                    disabled={!unlocked}
+                    disabled={!unlocked || !editable}
                     onChange={(e) => setQty((q) => ({ ...q, [p.id]: Math.max(0, Math.floor(Number(e.target.value))) }))}
                   />
                 </td>
@@ -110,7 +111,7 @@ export function StockPanel({ controller, onClose }: { controller: Controller; on
           小計 {formatMoney(Math.max(0, total - (lines.length ? SHIPPING_FEE : 0)))} ＋ 運費 {formatMoney(SHIPPING_FEE)} ＝{' '}
           <strong>{formatMoney(lines.length ? total : 0)}</strong>
         </span>
-        <button className="primary" disabled={lines.length === 0} onClick={submit}>
+        <button className="primary" disabled={!editable || lines.length === 0} onClick={submit}>
           下單（明天開店前送達）
         </button>
       </footer>

@@ -8,6 +8,7 @@ export const ERROR_MESSAGES: Record<CommandError, string> = {
   'covers-access': '會壓住其他設施的取用格',
   unreachable: '會讓某些取用格無法從入口走到',
   'not-prep-phase': '只能在準備階段操作',
+  'not-report-phase': '只能在每日結算時操作',
   'insufficient-funds': '資金不足',
   'unknown-fixture': '找不到這個設施',
   'invalid-slot': '找不到這個格位',
@@ -20,3 +21,9 @@ export const ERROR_MESSAGES: Record<CommandError, string> = {
 };
 
 export const formatMoney = (n: number) => `$${n.toLocaleString('zh-TW')}`;
+
+/** 一天中的分鐘數 → HH:MM */
+export const formatTime = (minuteOfDay: number) => {
+  const m = Math.floor(minuteOfDay);
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+};

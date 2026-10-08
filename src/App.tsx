@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createStoreScene } from './render/scene';
 import type { StoreScene } from './render/scene';
 import { BuildToolbar } from './ui/BuildToolbar';
+import { DailyReportPanel } from './ui/DailyReportPanel';
 import type { Controller } from './ui/controller';
 import { Hud } from './ui/Hud';
 import { StockPanel } from './ui/StockPanel';
@@ -26,6 +27,17 @@ export function App({ controller }: { controller: Controller }) {
     };
   }, [controller]);
 
+  // 模擬迴圈：把每幀的現實時間交給 Game，由它依倍速換算成固定步數
+  useEffect(() => {
+    let last = performance.now();
+    let frame = requestAnimationFrame(function loop(now) {
+      controller.game.tick(now - last);
+      last = now;
+      frame = requestAnimationFrame(loop);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [controller]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
@@ -39,9 +51,10 @@ export function App({ controller }: { controller: Controller }) {
   return (
     <>
       <div ref={hostRef} className="stage" />
-      <Hud game={controller.game} onOpenStock={() => setStockOpen((o) => !o)} />
+      <Hud game={controller.game} interaction={controller.interaction} onOpenStock={() => setStockOpen((o) => !o)} />
       <BuildToolbar controller={controller} />
       {stockOpen && <StockPanel controller={controller} onClose={() => setStockOpen(false)} />}
+      <DailyReportPanel game={controller.game} />
     </>
   );
 }

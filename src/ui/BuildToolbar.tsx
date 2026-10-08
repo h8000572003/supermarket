@@ -11,6 +11,17 @@ export function BuildToolbar({ controller }: { controller: Controller }) {
   const { tool, selectedId, message } = useInteraction(interaction);
   const selected = selectedId ? game.fixture(selectedId) : undefined;
 
+  if (game.phase !== 'prep') {
+    return (
+      <div className="toolbar-area">
+        {message && <div className="toast">{message}</div>}
+        <div className="toolbar">
+          <span className="hint">目前只能觀察；擺設、進貨與定價請在準備階段進行</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="toolbar-area">
       {message && <div className="toast">{message}</div>}

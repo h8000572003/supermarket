@@ -9,7 +9,7 @@ import type { GridPoint } from '../sim/store/layout';
 import type { Controller } from '../ui/controller';
 import { createFixtureSprites, loadFixtureTextures } from './fixture-sprites';
 import type { FixtureStyle } from './fixture-sprites';
-import { TILE_HEIGHT, gridToScreen, screenToGrid, tileDiamond } from './iso';
+import { TILE_HEIGHT, TILE_WIDTH, gridToScreen, screenToGrid, tileDiamond } from './iso';
 
 const COLORS = {
   background: 0x2b2f3a,
@@ -50,8 +50,10 @@ export async function createStoreScene(host: HTMLElement, controller: Controller
   const objects = new Container({ sortableChildren: true });
   world.addChild(drawWalls(), drawFloor(), drawEntrance(), overlay, objects);
 
-  let zoom = 1;
+  // 實際縮放 = 依畫面大小自動貼合的基準 × 玩家以滾輪調整的倍率
+  let userZoom = 1;
   const layout = () => {
+    const zoom = fitZoom(app.screen.width, app.screen.height) * userZoom;
     // 店面中心置於畫面中央
     const center = gridToScreen(STORE_WIDTH / 2, STORE_DEPTH / 2);
     world.scale.set(zoom);
@@ -62,7 +64,7 @@ export async function createStoreScene(host: HTMLElement, controller: Controller
 
   const onWheel = (e: WheelEvent) => {
     e.preventDefault();
-    zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1)));
+    userZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, userZoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1)));
     layout();
   };
   const onContextMenu = (e: MouseEvent) => e.preventDefault();
@@ -154,6 +156,14 @@ function drawOverlay(g: Graphics, game: Game, { interaction }: Controller): void
   if (hover && tool.mode === 'select') {
     g.poly(tileDiamond(hover.x, hover.y)).fill({ color: COLORS.hover, alpha: 0.3 }).stroke({ width: 2, color: COLORS.hover });
   }
+}
+
+/** 讓整個店面（含牆）放得進畫面、最大不超過 1 的縮放 */
+function fitZoom(width: number, height: number): number {
+  const storeWidth = ((STORE_WIDTH + STORE_DEPTH) * TILE_WIDTH) / 2;
+  const storeHeight = ((STORE_WIDTH + STORE_DEPTH) * TILE_HEIGHT) / 2 + WALL_HEIGHT;
+  // 預留 HUD 與工具列的空間
+  return Math.min(1, (width - 32) / storeWidth, (height - 200) / storeHeight);
 }
 
 function drawFloor(): Graphics {
