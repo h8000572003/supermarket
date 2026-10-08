@@ -1,0 +1,115 @@
+:root {
+  font-family: 'PingFang TC', 'Noto Sans TC', system-ui, sans-serif;
+  color: #f3f1ec;
+  background: #2b2f3a;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.stage {
+  position: absolute;
+  inset: 0;
+}
+
+.hud {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: rgb(20 22 28 / 0.75);
+  pointer-events: none;
+}
+
+.hud-title {
+  font-weight: 700;
+}
+
+.hud-meta {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+
+.hud-meta strong {
+  color: #ffd86b;
+}
+
+.toolbar-area {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.toolbar,
+.panel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgb(20 22 28 / 0.85);
+  pointer-events: auto;
+}
+
+.toolbar button,
+.panel button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 72px;
+  padding: 6px 12px;
+  border: 1px solid #4a5060;
+  border-radius: 6px;
+  background: #343946;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.toolbar button small {
+  opacity: 0.7;
+  font-size: 11px;
+}
+
+.toolbar button.active {
+  border-color: #ffd86b;
+  background: #4b4532;
+}
+
+.toolbar button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.panel button.danger {
+  border-color: #8a4a48;
+}
+
+.hint {
+  padding: 0 8px;
+  font-size: 13px;
+  opacity: 0.7;
+}
+
+.toast {
+  padding: 6px 14px;
+  border-radius: 6px;
+  background: #8a3f3c;
+  font-size: 14px;
+}
