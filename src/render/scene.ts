@@ -2,13 +2,13 @@ import { Application, Container, Graphics } from 'pixi.js';
 import { FIXTURES } from '../sim/catalog/fixtures';
 import type { FixtureKind } from '../sim/catalog/fixtures';
 import type { Game } from '../sim/game';
-import { accessTiles, footprint } from '../sim/store/geometry';
+import { accessTiles, footprint, footprintTiles } from '../sim/store/geometry';
 import type { Placement } from '../sim/store/geometry';
 import { ENTRANCE, STORE_DEPTH, STORE_WIDTH, isInsideStore } from '../sim/store/layout';
 import type { GridPoint } from '../sim/store/layout';
 import type { Controller } from '../ui/controller';
-import { depthOf, drawFixtureBox } from './fixture-sprites';
-import type { BoxStyle } from './fixture-sprites';
+import { createFixtureSprites, loadFixtureTextures } from './fixture-sprites';
+import type { FixtureStyle } from './fixture-sprites';
 import { TILE_HEIGHT, gridToScreen, screenToGrid, tileDiamond } from './iso';
 
 const COLORS = {
@@ -22,6 +22,7 @@ const COLORS = {
   entrance: 0x5fb37a,
   hover: 0xffffff,
   access: 0x4f9de0,
+  selected: 0xffd86b,
 };
 
 const WALL_HEIGHT = TILE_HEIGHT * 2.5;
@@ -36,7 +37,10 @@ export interface StoreScene {
 export async function createStoreScene(host: HTMLElement, controller: Controller): Promise<StoreScene> {
   const { game, interaction } = controller;
   const app = new Application();
-  await app.init({ resizeTo: host, background: COLORS.background, antialias: true });
+  await Promise.all([
+    app.init({ resizeTo: host, background: COLORS.background, antialias: true }),
+    loadFixtureTextures(),
+  ]);
   host.appendChild(app.canvas);
 
   const world = new Container();
@@ -103,20 +107,19 @@ export async function createStoreScene(host: HTMLElement, controller: Controller
 }
 
 function drawObjects(objects: Container, game: Game, { interaction }: Controller): void {
-  for (const child of objects.removeChildren()) child.destroy();
-  const { tool, selectedId, hover } = interaction.state;
+  for (const child of objects.removeChildren()) child.destroy({ children: true });
+  const { tool, hover } = interaction.state;
   const movingId = tool.mode === 'place' ? tool.movingId : undefined;
 
-  const add = (kind: FixtureKind, placement: Placement, style: BoxStyle, depthBias = 0) => {
-    const fp = footprint(FIXTURES[kind], placement);
-    const g = new Graphics();
-    drawFixtureBox(g, kind, fp, placement.facing, style);
-    g.zIndex = depthOf(fp) * 10 + depthBias;
-    objects.addChild(g);
+  const add = (kind: FixtureKind, placement: Placement, style: FixtureStyle, depthBias = 0) => {
+    for (const sprite of createFixtureSprites(kind, placement, style)) {
+      sprite.zIndex += depthBias;
+      objects.addChild(sprite);
+    }
   };
 
   for (const f of game.fixtures) {
-    add(f.kind, f, f.id === movingId ? 'moving-origin' : f.id === selectedId ? 'selected' : 'normal');
+    add(f.kind, f, f.id === movingId ? 'moving-origin' : 'normal');
   }
 
   if (tool.mode === 'place' && hover) {
@@ -141,7 +144,12 @@ function drawOverlay(g: Graphics, game: Game, { interaction }: Controller): void
     markAccess(tool.kind, { origin: hover, facing: tool.facing });
   } else if (selectedId) {
     const f = game.fixture(selectedId);
-    if (f) markAccess(f.kind, f);
+    if (f) {
+      markAccess(f.kind, f);
+      for (const t of footprintTiles(footprint(FIXTURES[f.kind], f))) {
+        g.poly(tileDiamond(t.x, t.y)).fill({ color: COLORS.selected, alpha: 0.45 }).stroke({ width: 2, color: COLORS.selected });
+      }
+    }
   }
   if (hover && tool.mode === 'select') {
     g.poly(tileDiamond(hover.x, hover.y)).fill({ color: COLORS.hover, alpha: 0.3 }).stroke({ width: 2, color: COLORS.hover });

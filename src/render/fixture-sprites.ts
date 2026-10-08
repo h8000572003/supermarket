@@ -1,72 +1,96 @@
-import { Graphics } from 'pixi.js';
+import { Assets, Container, Sprite } from 'pixi.js';
+import type { Texture } from 'pixi.js';
+import { FIXTURES } from '../sim/catalog/fixtures';
 import type { FixtureKind } from '../sim/catalog/fixtures';
-import type { Facing, Footprint } from '../sim/store/geometry';
-import { gridToScreen } from './iso';
+import { footprint, footprintTiles, rotateClockwise } from '../sim/store/geometry';
+import type { Facing, Placement } from '../sim/store/geometry';
+import { TILE_WIDTH, gridToScreen } from './iso';
 
 /**
- * 設施的佔位外觀（等角方塊）。換成 Kenney 素材時只需改這個檔案。
+ * 設施外觀：Kenney Furniture Kit（CC0）的等角 PNG，每格一張。
+ * 換素材時只需改這個檔案。
  */
-const LOOK: Record<FixtureKind, { color: number; height: number }> = {
-  shelf: { color: 0xc98b4e, height: 34 },
-  fridge: { color: 0x7fb7d9, height: 50 },
-  register: { color: 0x8f6bb3, height: 22 },
+const BASE = `${import.meta.env.BASE_URL}assets/kenney-furniture/`;
+
+type Suffix = 'NE' | 'NW' | 'SE' | 'SW';
+
+/** 一般家具：檔名後綴即正面在畫面上的方向 */
+const STANDARD: Record<Facing, Suffix> = { north: 'NE', east: 'SE', south: 'SW', west: 'NW' };
+/** kitchenFridge 的玻璃門不在模型正面：依畫面上玻璃門所在的面挑圖 */
+const GLASS_FRIDGE: Record<Facing, Suffix> = { north: 'SE', east: 'NE', south: 'NW', west: 'SW' };
+
+interface Layer {
+  readonly model: string;
+  readonly suffixes: Record<Facing, Suffix>;
+  /** 相對於朝向再轉幾個 90°（如收銀螢幕朝向店員） */
+  readonly turn?: number;
+  /** 往上抬高的像素（疊在其他物件上） */
+  readonly lift?: number;
+  /** 相對於填滿一格寬度的縮放 */
+  readonly size?: number;
+}
+
+const LOOKS: Record<FixtureKind, readonly Layer[]> = {
+  shelf: [{ model: 'bookcaseOpenLow', suffixes: STANDARD }],
+  fridge: [{ model: 'kitchenFridge', suffixes: GLASS_FRIDGE }],
+  register: [
+    { model: 'kitchenBar', suffixes: STANDARD },
+    { model: 'computerScreen', suffixes: STANDARD, turn: 2, lift: 34, size: 0.5 },
+  ],
 };
 
-const FRONT_MARK = 0xfff4c2;
+const FILL = 0.92;
 
-export type BoxStyle = 'normal' | 'selected' | 'ghost-ok' | 'ghost-bad' | 'moving-origin';
-
-function shade(color: number, factor: number): number {
-  const r = Math.min(255, Math.round(((color >> 16) & 0xff) * factor));
-  const g = Math.min(255, Math.round(((color >> 8) & 0xff) * factor));
-  const b = Math.min(255, Math.round((color & 0xff) * factor));
-  return (r << 16) | (g << 8) | b;
-}
-
-/** 深度排序值：越靠近觀看者（x + y 越大）越晚畫 */
-export function depthOf(fp: Footprint): number {
-  return fp.origin.x + fp.spanX + fp.origin.y + fp.spanY;
-}
-
-export function drawFixtureBox(g: Graphics, kind: FixtureKind, fp: Footprint, facing: Facing, style: BoxStyle): void {
-  const { height } = LOOK[kind];
-  const base =
-    style === 'ghost-ok' ? 0x6fd38a : style === 'ghost-bad' ? 0xe0605a : LOOK[kind].color;
-  const alpha = style === 'ghost-ok' || style === 'ghost-bad' ? 0.6 : style === 'moving-origin' ? 0.3 : 1;
-
-  const { x: ox, y: oy } = fp.origin;
-  const top = gridToScreen(ox, oy);
-  const right = gridToScreen(ox + fp.spanX, oy);
-  const bottom = gridToScreen(ox + fp.spanX, oy + fp.spanY);
-  const left = gridToScreen(ox, oy + fp.spanY);
-  const up = (p: { x: number; y: number }) => ({ x: p.x, y: p.y - height });
-  const flat = (...ps: { x: number; y: number }[]) => ps.flatMap((p) => [p.x, p.y]);
-
-  // 可見的兩個側面：南面（left→bottom）與東面（bottom→right）
-  g.poly(flat(left, bottom, up(bottom), up(left))).fill({ color: shade(base, 0.72), alpha });
-  g.poly(flat(bottom, right, up(right), up(bottom))).fill({ color: shade(base, 0.86), alpha });
-  g.poly(flat(up(top), up(right), up(bottom), up(left))).fill({ color: base, alpha });
-
-  // 頂面上沿正面邊緣畫一條標記
-  const edges: Record<Facing, [{ x: number; y: number }, { x: number; y: number }]> = {
-    north: [top, right],
-    east: [right, bottom],
-    south: [bottom, left],
-    west: [left, top],
-  };
-  const [a, b] = edges[facing];
-  const center = up({ x: (top.x + bottom.x) / 2, y: (top.y + bottom.y) / 2 });
-  const inset = (p: { x: number; y: number }) => {
-    const q = up(p);
-    return { x: q.x + (center.x - q.x) * 0.18, y: q.y + (center.y - q.y) * 0.18 };
-  };
-  const ia = inset(a);
-  const ib = inset(b);
-  g.moveTo(ia.x, ia.y).lineTo(ib.x, ib.y).stroke({ width: 4, color: FRONT_MARK, alpha, cap: 'round' });
-
-  if (style === 'selected') {
-    g.poly(flat(up(top), up(right), up(bottom), up(left)))
-      .stroke({ width: 3, color: 0xffffff });
-    g.poly(flat(left, bottom, right, up(right), up(top), up(left))).stroke({ width: 2, color: 0xffffff, alpha: 0.8 });
+export async function loadFixtureTextures(): Promise<void> {
+  const urls = new Set<string>();
+  for (const layers of Object.values(LOOKS)) {
+    for (const layer of layers) {
+      for (const suffix of Object.values(layer.suffixes)) urls.add(`${BASE}${layer.model}_${suffix}.png`);
+    }
   }
+  await Assets.load([...urls]);
 }
+
+function texture(layer: Layer, facing: Facing): Texture {
+  let f = facing;
+  for (let i = 0; i < (layer.turn ?? 0); i++) f = rotateClockwise(f);
+  return Assets.get<Texture>(`${BASE}${layer.model}_${layer.suffixes[f]}.png`);
+}
+
+export type FixtureStyle = 'normal' | 'ghost-ok' | 'ghost-bad' | 'moving-origin';
+
+const TINT: Record<FixtureStyle, number> = {
+  normal: 0xffffff,
+  'ghost-ok': 0x8dff9f,
+  'ghost-bad': 0xff6a6a,
+  'moving-origin': 0xffffff,
+};
+
+const ALPHA: Record<FixtureStyle, number> = {
+  normal: 1,
+  'ghost-ok': 0.75,
+  'ghost-bad': 0.75,
+  'moving-origin': 0.3,
+};
+
+/** 每個佔用格一個 Container，zIndex 依深度（x + y）排序 */
+export function createFixtureSprites(kind: FixtureKind, placement: Placement, style: FixtureStyle): Container[] {
+  const tiles = footprintTiles(footprint(FIXTURES[kind], placement));
+  return tiles.map((tile) => {
+    const c = new Container();
+    const bottom = gridToScreen(tile.x + 1, tile.y + 1);
+    for (const layer of LOOKS[kind]) {
+      const tex = texture(layer, placement.facing);
+      const s = new Sprite(tex);
+      s.anchor.set(0.5, 1);
+      s.scale.set(((TILE_WIDTH * FILL) / tex.width) * (layer.size ?? 1));
+      s.position.set(bottom.x, bottom.y - (layer.lift ?? 0) - (layer.size ? (TILE_WIDTH / 4) * (1 - layer.size) : 0));
+      s.tint = TINT[style];
+      s.alpha = ALPHA[style];
+      c.addChild(s);
+    }
+    c.zIndex = (tile.x + tile.y) * 10;
+    return c;
+  });
+}
+
