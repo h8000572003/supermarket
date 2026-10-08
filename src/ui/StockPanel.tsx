@@ -3,7 +3,7 @@ import { CATEGORIES, PRODUCTS } from '../sim/catalog/products';
 import { SHIPPING_FEE, orderTotal } from '../sim/economy/purchase-order';
 import type { Controller } from './controller';
 import { useGameVersion } from './hooks';
-import { ERROR_MESSAGES, formatMoney } from './messages';
+import { formatMoney } from './messages';
 
 /** 商品與進貨：調整售價、查看倉庫庫存、下進貨單 */
 export function StockPanel({ controller, onClose }: { controller: Controller; onClose: () => void }) {
@@ -24,7 +24,7 @@ export function StockPanel({ controller, onClose }: { controller: Controller; on
       setQty({});
       interaction.update({ message: null });
     } else {
-      interaction.update({ message: ERROR_MESSAGES[r.error] });
+      controller.showError(r.error);
     }
   };
 
@@ -32,7 +32,7 @@ export function StockPanel({ controller, onClose }: { controller: Controller; on
     const draft = priceDraft[productId];
     if (draft === undefined) return;
     const r = game.setSalePrice(productId, Number(draft));
-    if (!r.ok) interaction.update({ message: ERROR_MESSAGES[r.error] });
+    if (!r.ok) controller.showError(r.error);
     setPriceDraft((d) => {
       const next = { ...d };
       delete next[productId];

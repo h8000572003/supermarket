@@ -1,9 +1,12 @@
 import { SPEEDS } from '../sim/clock/clock';
 import type { Speed } from '../sim/clock/clock';
-import type { Game, Phase } from '../sim/game';
+import { useSyncExternalStore } from 'react';
+import type { SoundBoard } from '../audio/sounds';
+import type { Phase } from '../sim/game';
+import type { Controller } from './controller';
 import { useGameVersion } from './hooks';
-import { ERROR_MESSAGES, formatMoney, formatTime } from './messages';
-import type { Interaction } from './interaction';
+import { startNewGame } from './new-game';
+import { formatMoney, formatTime } from './messages';
 
 const PHASE_LABEL: Record<Phase, string> = {
   prep: '準備階段',
@@ -15,19 +18,25 @@ const PHASE_LABEL: Record<Phase, string> = {
 const SPEED_LABEL: Record<Speed, string> = { 0: '⏸', 1: '1x', 2: '2x', 4: '4x' };
 
 interface HudProps {
-  game: Game;
-  interaction: Interaction;
+  controller: Controller;
+  sounds: SoundBoard;
   onOpenStock: () => void;
   onOpenMilestones: () => void;
 }
 
-export function Hud({ game, interaction, onOpenStock, onOpenMilestones }: HudProps) {
+export function Hud({ controller, sounds, onOpenStock, onOpenMilestones }: HudProps) {
+  const { game, interaction } = controller;
   useGameVersion(game);
+  const muted = useSyncExternalStore(
+    (l) => sounds.subscribe(l),
+    () => sounds.muted,
+  );
   const pending = game.pendingOrders.length;
 
   const openStore = () => {
     const r = game.openStore();
-    interaction.update(r.ok ? { tool: { mode: 'select' }, selectedId: null, message: null } : { message: ERROR_MESSAGES[r.error] });
+    if (r.ok) interaction.update({ tool: { mode: 'select' }, selectedId: null, message: null });
+    else controller.showError(r.error);
   };
 
   return (
@@ -36,6 +45,18 @@ export function Hud({ game, interaction, onOpenStock, onOpenMilestones }: HudPro
       <span className="hud-actions">
         <button onClick={onOpenStock}>商品與進貨{pending > 0 ? `（在途 ${pending} 張）` : ''}</button>
         <button onClick={onOpenMilestones}>目標</button>
+        <button onClick={() => sounds.setMuted(!muted)} aria-label={muted ? '開啟音效' : '關閉音效'}>
+          {muted ? '🔇' : '🔊'}
+        </button>
+        {game.phase === 'prep' && (
+          <button
+            onClick={() => {
+              if (window.confirm('確定要放棄目前的店、從第 1 天重新開始嗎？')) startNewGame();
+            }}
+          >
+            新遊戲
+          </button>
+        )}
         {game.phase === 'prep' && (
           <button className="primary" onClick={openStore}>
             開店

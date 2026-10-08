@@ -3,7 +3,6 @@ import { CATEGORIES, PRODUCTS } from '../sim/catalog/products';
 import { totalQty } from '../sim/inventory/batch';
 import type { Fixture } from '../sim/store/store-layout';
 import type { Controller } from './controller';
-import { ERROR_MESSAGES } from './messages';
 
 /** 選取陳列櫃時：指定每個格位陳列的商品 */
 export function SlotPanel({ controller, fixture }: { controller: Controller; fixture: Fixture }) {
@@ -13,7 +12,8 @@ export function SlotPanel({ controller, fixture }: { controller: Controller; fix
 
   const assign = (index: number, value: string) => {
     const r = game.assignSlot(fixture.id, index, value || null);
-    interaction.update({ message: r.ok ? null : ERROR_MESSAGES[r.error] });
+    if (r.ok) interaction.update({ message: null });
+    else controller.showError(r.error);
   };
 
   return (

@@ -5,6 +5,7 @@ import { BANKRUPTCY_DAYS, MILESTONES } from '../sim/progress/progress';
 import type { DailyReport } from '../sim/report/daily-report';
 import { useGameVersion } from './hooks';
 import { formatMoney } from './messages';
+import { startNewGame } from './new-game';
 
 /** 每日結算畫面；破產時改為結束畫面 */
 export function DailyReportPanel({ game }: { game: Game }) {
@@ -119,7 +120,7 @@ export function DailyReportPanel({ game }: { game: Game }) {
         </section>
 
         {p.bankrupt ? (
-          <button className="primary" onClick={() => window.location.reload()}>
+          <button className="primary" onClick={startNewGame}>
             重新開始
           </button>
         ) : (

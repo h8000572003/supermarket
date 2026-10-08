@@ -9,6 +9,12 @@ export interface Slot {
 
 const EMPTY_SLOT: Slot = { productId: null, batches: [] };
 
+/** 可序列化的庫存狀態 */
+export interface InventorySnapshot {
+  readonly backroom: readonly Batch[];
+  readonly displays: readonly { readonly fixtureId: string; readonly slots: readonly Slot[] }[];
+}
+
 /**
  * 倉庫與各陳列櫃格位的庫存，皆以批次保存。
  * 只負責庫存搬移；能不能這樣做（類別、階段等規則）由 Game 判斷。
@@ -112,6 +118,20 @@ export class Inventory {
       );
     }
     return removed;
+  }
+
+  snapshot(): InventorySnapshot {
+    return {
+      backroom: [...this.backroom.values()].flat(),
+      displays: [...this.displays].map(([fixtureId, slots]) => ({ fixtureId, slots })),
+    };
+  }
+
+  static fromSnapshot(snapshot: InventorySnapshot): Inventory {
+    const inventory = new Inventory();
+    inventory.receive(snapshot.backroom);
+    for (const d of snapshot.displays) inventory.displays.set(d.fixtureId, [...d.slots]);
+    return inventory;
   }
 
   private setSlot(fixtureId: string, index: number, slot: Slot): void {

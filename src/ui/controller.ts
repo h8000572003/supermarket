@@ -1,16 +1,28 @@
 import type { FixtureKind } from '../sim/catalog/fixtures';
-import type { Game } from '../sim/game';
+import type { CommandError, Game } from '../sim/game';
 import { rotateClockwise } from '../sim/store/geometry';
 import type { GridPoint } from '../sim/store/layout';
 import type { Interaction } from './interaction';
 import { ERROR_MESSAGES } from './messages';
+
+/** 操作回饋音效；由 audio 層提供 */
+export interface Feedback {
+  play(sound: 'place' | 'error'): void;
+}
 
 /** 把店長的輸入（點擊、按鍵、按鈕）轉成 Game commands */
 export class Controller {
   constructor(
     readonly game: Game,
     readonly interaction: Interaction,
+    private readonly feedback: Feedback = { play: () => {} },
   ) {}
+
+  /** 指令失敗：顯示原因並發出錯誤音 */
+  showError(error: CommandError): void {
+    this.interaction.update({ message: ERROR_MESSAGES[error] });
+    this.feedback.play('error');
+  }
 
   hover(cell: GridPoint | null): void {
     const prev = this.interaction.state.hover;
@@ -28,9 +40,9 @@ export class Controller {
     const result = tool.movingId
       ? this.game.moveFixture(tool.movingId, placement)
       : this.game.placeFixture(tool.kind, placement);
-    if (!result.ok) {
-      this.interaction.update({ message: ERROR_MESSAGES[result.error] });
-    } else if (tool.movingId) {
+    if (!result.ok) return this.showError(result.error);
+    this.feedback.play('place');
+    if (tool.movingId) {
       this.interaction.update({ tool: { mode: 'select' }, selectedId: tool.movingId, message: null });
     } else {
       this.interaction.update({ message: null });
@@ -57,18 +69,21 @@ export class Controller {
       this.interaction.update({ tool: { ...tool, facing: rotateClockwise(tool.facing) } });
     } else if (selectedId) {
       const result = this.game.rotateFixture(selectedId);
-      this.interaction.update({ message: result.ok ? null : ERROR_MESSAGES[result.error] });
+      if (result.ok) this.interaction.update({ message: null });
+      else this.showError(result.error);
     }
   }
 
   sell(id: string): void {
     const result = this.game.sellFixture(id);
-    this.interaction.update(result.ok ? { selectedId: null, message: null } : { message: ERROR_MESSAGES[result.error] });
+    if (result.ok) this.interaction.update({ selectedId: null, message: null });
+    else this.showError(result.error);
   }
 
   hire(): void {
     const r = this.game.hireStaff();
-    this.interaction.update({ message: r.ok ? null : ERROR_MESSAGES[r.error] });
+    if (r.ok) this.interaction.update({ message: null });
+    else this.showError(r.error);
   }
 
   /** 解雇最後雇用的店員 */
@@ -76,7 +91,8 @@ export class Controller {
     const last = this.game.staff.at(-1);
     if (!last) return;
     const r = this.game.fireStaff(last.id);
-    this.interaction.update({ message: r.ok ? null : ERROR_MESSAGES[r.error] });
+    if (r.ok) this.interaction.update({ message: null });
+    else this.showError(r.error);
   }
 
   /** 右鍵 / Esc */

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { SoundBoard } from './audio/sounds';
 import { createStoreScene } from './render/scene';
 import type { StoreScene } from './render/scene';
 import { BuildToolbar } from './ui/BuildToolbar';
@@ -8,7 +9,7 @@ import { Hud } from './ui/Hud';
 import { MilestonesPanel } from './ui/MilestonesPanel';
 import { StockPanel } from './ui/StockPanel';
 
-export function App({ controller }: { controller: Controller }) {
+export function App({ controller, sounds }: { controller: Controller; sounds: SoundBoard }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [panel, setPanel] = useState<'stock' | 'milestones' | null>(null);
   const toggle = (p: 'stock' | 'milestones') => setPanel((cur) => (cur === p ? null : p));
@@ -54,8 +55,8 @@ export function App({ controller }: { controller: Controller }) {
     <>
       <div ref={hostRef} className="stage" />
       <Hud
-        game={controller.game}
-        interaction={controller.interaction}
+        controller={controller}
+        sounds={sounds}
         onOpenStock={() => toggle('stock')}
         onOpenMilestones={() => toggle('milestones')}
       />

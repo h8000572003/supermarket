@@ -27,6 +27,8 @@ import type { MilestoneContext } from './progress/progress';
 import { DayLedger } from './report/daily-report';
 import type { DailyReport, WasteLine } from './report/daily-report';
 import { Rng } from './rng';
+import { SNAPSHOT_VERSION } from './snapshot';
+import type { GameSnapshot } from './snapshot';
 import { totalQty } from './inventory/batch';
 import { customerAccessTiles, rotateClockwise, slotAccessTile, staffAccessTiles } from './store/geometry';
 import type { Facing } from './store/geometry';
@@ -80,6 +82,14 @@ export const DAILY_RENT = 1_500;
 export const DAILY_WAGE = 1_000;
 export const MAX_STAFF = 6;
 
+/** 模擬中發生、值得畫面或音效回應的瞬間事件 */
+export type GameEvent =
+  | { readonly type: 'store-opened' }
+  | { readonly type: 'sale'; readonly amount: number }
+  | { readonly type: 'abandon' }
+  | { readonly type: 'day-ended'; readonly bankrupt: boolean }
+  | { readonly type: 'milestone'; readonly id: string };
+
 /** 受雇的店員（跨營業日存在） */
 export interface Staff {
   readonly id: string;
@@ -110,7 +120,7 @@ export interface GameOptions {
 export class Game {
   readonly rng: Rng;
   private readonly layout = new StoreLayout();
-  private readonly inventory = new Inventory();
+  private inventory = new Inventory();
   private _funds = STARTING_FUNDS;
   private _phase: Phase = 'prep';
   private _day = 1;
@@ -137,6 +147,7 @@ export class Game {
   private nextFixtureId = 1;
   private _version = 0;
   private readonly listeners = new Set<() => void>();
+  private readonly eventListeners = new Set<(event: GameEvent) => void>();
 
   private readonly customerWorld: CustomerWorld;
   private readonly customerArrivals: boolean;
@@ -146,6 +157,59 @@ export class Game {
     this.customerArrivals = options.customerArrivals ?? true;
     this._reputation = options.startingReputation ?? STARTING_REPUTATION;
     this.customerWorld = this.createCustomerWorld();
+  }
+
+  /** 準備階段的完整狀態（存檔用）；其他階段回傳 null */
+  snapshot(): GameSnapshot | null {
+    if (this._phase !== 'prep') return null;
+    return {
+      version: SNAPSHOT_VERSION,
+      day: this._day,
+      funds: this._funds,
+      reputation: this._reputation,
+      totalRevenue: this.totalRevenue,
+      bestServed: this.bestServed,
+      negativeDays: this.negativeDays,
+      achieved: [...this.achieved],
+      unlocked: [...this.unlocked],
+      salePrices: [...this.salePrices],
+      fixtures: this.layout.list(),
+      nextFixtureId: this.nextFixtureId,
+      inventory: this.inventory.snapshot(),
+      staff: this._staff,
+      nextStaffId: this.nextStaffId,
+      pendingOrders: this._pendingOrders,
+      rngState: this.rng.state,
+      speed: this._speed,
+      ledger: { fundsAtStart: this.ledger.fundsAtStart, purchases: this.ledger.purchases, waste: this.ledger.waste },
+    };
+  }
+
+  /** 從快照還原到準備階段 */
+  static fromSnapshot(s: GameSnapshot, options: Omit<GameOptions, 'seed'> = {}): Game {
+    // 以快照中的亂數狀態當作種子，接續同一個亂數序列
+    const game = new Game({ ...options, seed: s.rngState });
+    game._day = s.day;
+    game._funds = s.funds;
+    game._reputation = s.reputation;
+    game.totalRevenue = s.totalRevenue;
+    game.bestServed = s.bestServed;
+    game.negativeDays = s.negativeDays;
+    s.achieved.forEach((id) => game.achieved.add(id));
+    game.unlocked.clear();
+    s.unlocked.forEach((c) => game.unlocked.add(c));
+    s.salePrices.forEach(([id, price]) => game.salePrices.set(id, price));
+    s.fixtures.forEach((f) => game.layout.put(f));
+    game.nextFixtureId = s.nextFixtureId;
+    game.inventory = Inventory.fromSnapshot(s.inventory);
+    game._staff = [...s.staff];
+    game.nextStaffId = s.nextStaffId;
+    game._pendingOrders = [...s.pendingOrders];
+    game._speed = s.speed;
+    game.ledger = new DayLedger(s.day, s.ledger.fundsAtStart);
+    game.ledger.purchases = s.ledger.purchases;
+    game.ledger.waste = [...s.ledger.waste];
+    return game;
   }
 
   get funds(): number {
@@ -266,6 +330,16 @@ export class Game {
 
   fixtureAt(p: { x: number; y: number }): Fixture | undefined {
     return this.layout.fixtureAt(p);
+  }
+
+  /** 監聽瞬間事件（成交、放棄、打烊…） */
+  onEvent(listener: (event: GameEvent) => void): () => void {
+    this.eventListeners.add(listener);
+    return () => this.eventListeners.delete(listener);
+  }
+
+  private emit(event: GameEvent): void {
+    for (const listener of this.eventListeners) listener(event);
   }
 
   subscribe(listener: () => void): () => void {
@@ -396,6 +470,7 @@ export class Game {
     this.reservedSlots.clear();
     this.customers = [];
     this.checkout = new Checkout(this.registerSpots(), (p) => this.layout.isWalkable(p));
+    this.emit({ type: 'store-opened' });
     this.changed();
     return ok(undefined);
   }
@@ -421,10 +496,13 @@ export class Game {
   private advanceStep(): void {
     this.maybeSpawnCustomer();
     this.checkout.update(this.agents, this.staffWorld, this.reservedSlots, this.customerWorld, (c) => {
+      let amount = 0;
       for (const item of c.basket) {
         this.ledger.recordSale(item.productId, item.price);
-        this._funds += item.price;
+        amount += item.price;
       }
+      this._funds += amount;
+      this.emit({ type: 'sale', amount });
     });
     for (const agent of this.agents) agent.update(this.staffWorld, this.reservedSlots);
     for (const customer of this.customers) customer.update(this.customerWorld);
@@ -462,6 +540,8 @@ export class Game {
       negativeDays: this.negativeDays,
       bankrupt,
     });
+    this.emit({ type: 'day-ended', bankrupt });
+    for (const id of milestonesReached) this.emit({ type: 'milestone', id });
     this.changed();
   }
 
@@ -561,7 +641,10 @@ export class Game {
     takeOne: (fixtureId, slotIndex) => this.inventory.takeFromSlot(fixtureId, slotIndex, 1),
     returnToBackroom: (batches) => this.inventory.receive(batches),
     joinQueue: (c) => this.checkout.join(c),
-    leaveQueue: (c) => this.checkout.leave(c),
+    leaveQueue: (c) => {
+      this.checkout.leave(c);
+      this.emit({ type: 'abandon' });
+    },
     queueTile: (c) => this.checkout.queueTile(c),
   };
   }

@@ -129,6 +129,32 @@ describe('顧客與收銀', () => {
   });
 });
 
+describe('事件', () => {
+  it('成交事件的金額加總等於當日營收；打烊時發出 day-ended', () => {
+    const { game } = store({ seed: 4 });
+    let sales = 0;
+    const types = new Set<string>();
+    game.onEvent((e) => {
+      types.add(e.type);
+      if (e.type === 'sale') sales += e.amount;
+    });
+    runOpenHours(game);
+    expect(sales).toBe(game.lastReport!.revenue);
+    expect([...types]).toEqual(expect.arrayContaining(['store-opened', 'sale', 'day-ended']));
+  });
+
+  it('沒有店員時每位放棄排隊的顧客都發出 abandon', () => {
+    const { game } = store({ staff: 0 });
+    let abandons = 0;
+    game.onEvent((e) => {
+      if (e.type === 'abandon') abandons++;
+    });
+    runOpenHours(game);
+    expect(abandons).toBeGreaterThan(0);
+    expect(abandons).toBeLessThanOrEqual(game.lastReport!.customers.abandoned);
+  });
+});
+
 describe('跨日', () => {
   it('連續營業數天不出錯，資金依結算變動', () => {
     const { game } = store({ seed: 11 });
