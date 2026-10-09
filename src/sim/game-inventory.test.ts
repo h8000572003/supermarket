@@ -14,16 +14,27 @@ function setup() {
 }
 
 describe('進貨單', () => {
-  it('下單立即扣款（含運費），隔天送達倉庫', () => {
+  it('第 1 天的開幕進貨立即付款並當天送達', () => {
     const game = new Game({ seed: 1 });
     const r = game.submitPurchaseOrder([{ productId: 'cola', qty: 24 }]);
     expect(r.ok).toBe(true);
     expect(game.funds).toBe(STARTING_FUNDS - 24 * productById('cola')!.cost - SHIPPING_FEE);
+    expect(game.backroomQty('cola')).toBe(24);
+    expect(game.pendingOrders).toHaveLength(0);
+  });
+
+  it('第 2 天起：下單立即付款，隔天送達倉庫', () => {
+    const game = new Game({ seed: 1 });
+    playThroughDay(game);
+    const funds = game.funds;
+    const r = game.submitPurchaseOrder([{ productId: 'cola', qty: 24 }]);
+    expect(r.ok).toBe(true);
+    expect(game.funds).toBe(funds - 24 * productById('cola')!.cost - SHIPPING_FEE);
     expect(game.backroomQty('cola')).toBe(0);
     expect(game.pendingOrders).toHaveLength(1);
 
     playThroughDay(game);
-    expect(game.day).toBe(2);
+    expect(game.day).toBe(3);
     expect(game.backroomQty('cola')).toBe(24);
     expect(game.pendingOrders).toHaveLength(0);
   });
@@ -80,15 +91,15 @@ describe('格位', () => {
 
   it('補貨以先進先出從倉庫補到容量上限', () => {
     const { game, fridgeId } = setup();
+    game.submitPurchaseOrder([{ productId: 'cola', qty: 12 }]); // 第 1 天開幕進貨，當天送達
+    playThroughDay(game);
     game.submitPurchaseOrder([{ productId: 'cola', qty: 12 }]);
-    playThroughDay(game); // 第 2 天送達 12
-    game.submitPurchaseOrder([{ productId: 'cola', qty: 12 }]);
-    playThroughDay(game); // 第 3 天送達 12
+    playThroughDay(game); // 第 3 天送達
     game.assignSlot(fridgeId, 0, 'cola');
 
     expect(game.restockSlot(fridgeId, 0)).toBe(FIXTURES.fridge.slotCapacity);
     const slot = game.slots(fridgeId)[0]!;
-    expect(slot.batches).toEqual([{ productId: 'cola', qty: 10, arrivedDay: 2 }]);
+    expect(slot.batches).toEqual([{ productId: 'cola', qty: 10, arrivedDay: 1 }]);
     expect(game.backroomQty('cola')).toBe(14);
   });
 
@@ -120,7 +131,7 @@ describe('格位', () => {
     game.assignSlot(shelfId, 1, 'chips');
     game.restockSlot(shelfId, 1);
     game.moveFixture(shelfId, { origin: { x: 2, y: 6 }, facing: 'north' });
-    expect(game.slots(shelfId)[1]?.batches).toEqual([{ productId: 'chips', qty: 6, arrivedDay: 2 }]);
+    expect(game.slots(shelfId)[1]?.batches).toEqual([{ productId: 'chips', qty: 6, arrivedDay: 1 }]);
   });
 });
 

@@ -29,14 +29,13 @@ function goodStore(seed = 1) {
     playThroughDay(game);
     for (const f of displays) for (let i = 0; i < 4; i++) game.restockSlot(f, i);
   };
-  day(); // 第 1 天沒貨，只為了讓進貨送達
+  day(); // 第 1 天：開幕進貨當天送達
   return { game, day };
 }
 
 describe('口碑與來客', () => {
   it('滿意的一天讓口碑上升', () => {
     const { game } = goodStore();
-    runOpenHours(game);
     const p = game.lastReport!.progress;
     expect(p.reputationBefore).toBeLessThan(p.reputationAfter);
     expect(game.reputation).toBe(p.reputationAfter);

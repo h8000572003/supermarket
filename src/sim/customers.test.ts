@@ -36,7 +36,7 @@ function store({ seed = 1, staff = 2, register = true, stock = true, priceFactor
     game.setSalePrice(productId, Math.round(suggested * priceFactor));
   }
   for (let i = 0; i < staff; i++) game.hireStaff();
-  // 第 1 天架上沒貨，只是讓進貨在第 2 天送達
+  // 第 1 天：開幕進貨當天送達，先營業一天
   runOpenHours(game);
   game.startNextDay();
   for (const f of [fridge, shelfA, shelfB]) for (let i = 0; i < 4; i++) game.restockSlot(f, i);

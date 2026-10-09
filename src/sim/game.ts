@@ -428,7 +428,7 @@ export class Game {
     return ok(undefined);
   }
 
-  /** 下進貨單並立即付款（商品金額 + 運費） */
+  /** 下進貨單並立即付款（商品金額 + 運費）；第 1 天的開幕進貨立即送達，其餘隔天送達 */
   submitPurchaseOrder(lines: readonly OrderLine[]): Result<PurchaseOrder> {
     if (this._phase !== 'prep') return fail('not-prep-phase');
     const nonEmpty = lines.filter((l) => l.qty > 0);
@@ -442,7 +442,8 @@ export class Game {
     const total = orderTotal(nonEmpty);
     if (this._funds < total) return fail('insufficient-funds');
     const order: PurchaseOrder = { lines: nonEmpty, placedDay: this._day, total };
-    this._pendingOrders = [...this._pendingOrders, order];
+    if (isOpeningDelivery(this._day)) this.deliver(order);
+    else this._pendingOrders = [...this._pendingOrders, order];
     this._funds -= total;
     this.ledger.purchases += total;
     this.changed();
@@ -573,13 +574,15 @@ export class Game {
     this._phase = 'prep';
     this._step = 0;
     this.ledger = new DayLedger(this._day, this._funds);
-    for (const order of this._pendingOrders) {
-      this.inventory.receive(order.lines.map((l) => ({ productId: l.productId, qty: l.qty, arrivedDay: this._day })));
-    }
+    for (const order of this._pendingOrders) this.deliver(order);
     this._pendingOrders = [];
     this.ledger.waste = summarizeWaste(this.inventory.removeBatches((b) => isExpired(b, this._day)));
     this.changed();
     return ok(undefined);
+  }
+
+  private deliver(order: PurchaseOrder): void {
+    this.inventory.receive(order.lines.map((l) => ({ productId: l.productId, qty: l.qty, arrivedDay: this._day })));
   }
 
   /** 今天開始時報廢的商品 */
@@ -710,6 +713,11 @@ function summarizeWaste(batches: readonly { productId: string; qty: number }[]):
   const qty = new Map<string, number>();
   for (const b of batches) qty.set(b.productId, (qty.get(b.productId) ?? 0) + b.qty);
   return [...qty].map(([productId, q]) => ({ productId, qty: q, cost: q * (productById(productId)?.cost ?? 0) }));
+}
+
+/** 第 1 天準備階段下的進貨單是開幕進貨，當天立即送達 */
+export function isOpeningDelivery(day: number): boolean {
+  return day === 1;
 }
 
 export function sellRefund(kind: FixtureKind): number {

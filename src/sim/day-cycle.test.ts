@@ -132,22 +132,22 @@ describe('鮮食報廢', () => {
       { productId: 'rice-ball', qty: 12 },
       { productId: 'cola', qty: 12 },
     ]);
-    playThroughDay(game); // 第 2 天送達
+    // 第 1 天的開幕進貨當天送達
     game.assignSlot(fridge.value.id, 0, 'rice-ball');
     game.restockSlot(fridge.value.id, 0); // 架上 10、倉庫 2
     return { game, fridgeId: fridge.value.id };
   }
 
-  it('保存期限 2 天：第 2 天送達，第 3 天仍可販售', () => {
+  it('保存期限 2 天：第 1 天送達，第 2 天仍可販售', () => {
     const { game, fridgeId } = withRiceBalls();
     playThroughDay(game);
-    expect(game.day).toBe(3);
+    expect(game.day).toBe(2);
     expect(game.backroomQty('rice-ball')).toBe(2);
-    expect(game.slots(fridgeId)[0]?.batches).toEqual([{ productId: 'rice-ball', qty: 10, arrivedDay: 2 }]);
+    expect(game.slots(fridgeId)[0]?.batches).toEqual([{ productId: 'rice-ball', qty: 10, arrivedDay: 1 }]);
     expect(game.todayWaste).toEqual([]);
   });
 
-  it('第 4 天開始時，倉庫與格位上的過期品都被報廢', () => {
+  it('第 3 天開始時，倉庫與格位上的過期品都被報廢', () => {
     const { game, fridgeId } = withRiceBalls();
     playThroughDay(game);
     playThroughDay(game);

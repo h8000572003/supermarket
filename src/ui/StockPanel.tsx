@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { CATEGORIES, PRODUCTS } from '../sim/catalog/products';
 import { SHIPPING_FEE, orderTotal } from '../sim/economy/purchase-order';
+import { isOpeningDelivery } from '../sim/game';
 import type { Controller } from './controller';
 import { useGameVersion } from './hooks';
 import { formatMoney } from './messages';
@@ -112,7 +113,7 @@ export function StockPanel({ controller, onClose }: { controller: Controller; on
           <strong>{formatMoney(lines.length ? total : 0)}</strong>
         </span>
         <button className="primary" disabled={!editable || lines.length === 0} onClick={submit}>
-          下單（明天開店前送達）
+          {isOpeningDelivery(game.day) ? '下單（開幕進貨，立即送達）' : '下單（明天開店前送達）'}
         </button>
       </footer>
     </div>
