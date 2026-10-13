@@ -6,7 +6,7 @@ import { RUSH_ORDERS_PER_DAY, freeRushTerms } from './economy/rush-order';
 import { Game } from './game';
 import { totalQty } from './inventory/batch';
 import type { GameEvent } from './game';
-import { playThroughDay, runOpenHours } from './test-helpers';
+import { playThroughDay, runOpenHours, tickResolving } from './test-helpers';
 
 const cost = (productId: string) => productById(productId)!.cost;
 
@@ -20,7 +20,7 @@ function day2({ customers = false, staff = 0 } = {}) {
 
 /** 逐步推進營業時段，直到遊戲時刻到達 minute（以一天中的分鐘數表示） */
 function tickUntil(game: Game, minute: number) {
-  while (game.phase === 'open' && game.minuteOfDay < minute) game.tick(STEP_MS / game.speed);
+  while (game.phase === 'open' && game.minuteOfDay < minute) tickResolving(game, STEP_MS / game.speed);
 }
 
 const at = (h: number, m = 0) => h * 60 + m;
@@ -187,7 +187,7 @@ describe('緊急叫貨', () => {
     expect(report.rushShipping).toBe(2 * SHIPPING_FEE);
     expect(report.purchases).toBe(6 * cost('chips') + SHIPPING_FEE + 12 * cost('cola'));
     expect(report.fundsAtEnd - report.fundsAtStart).toBe(
-      report.revenue - report.purchases - report.rushShipping - report.fixtures - report.rent - report.wages,
+      report.revenue - report.purchases - report.rushShipping - report.fixtures - report.rent - report.wages - report.incidentCosts,
     );
   });
 
@@ -232,7 +232,7 @@ describe('狀況用的緊急叫貨條件', () => {
 
 /** 從營業中跑到打烊（停在每日結算） */
 function finishOpenHours(game: Game) {
-  while (game.phase === 'open') game.tick(STEP_MS * 200);
+  while (game.phase === 'open') tickResolving(game, STEP_MS * 200);
 }
 
 /** 從營業中跑完當天，進入下一天並開店 */

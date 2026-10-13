@@ -1,4 +1,5 @@
 import type { CategoryId } from '../catalog/products';
+import type { IncidentRecord } from '../incidents/incidents';
 
 /** 單一商品的報廢 */
 export interface WasteLine {
@@ -56,6 +57,10 @@ export interface DailyReport {
   readonly waste: readonly WasteLine[];
   /** 當天曾限時特價的類別 */
   readonly flashSaleCategories: readonly CategoryId[];
+  /** 今日狀況：每個狀況的名稱、時刻與所選選項 */
+  readonly incidents: readonly IncidentRecord[];
+  /** 狀況支出：選項費用合計 */
+  readonly incidentCosts: number;
   readonly progress: DayProgress;
 }
 
@@ -78,6 +83,10 @@ export class DayLedger {
   waste: WasteLine[] = [];
   /** 當天曾限時特價的類別 */
   readonly flashSaleCategories = new Set<CategoryId>();
+  readonly incidents: IncidentRecord[] = [];
+  incidentCosts = 0;
+  /** 狀況造成、於打烊時套用的口碑變化 */
+  incidentReputation = 0;
 
   constructor(
     readonly day: number,
@@ -100,6 +109,11 @@ export class DayLedger {
     else this.abandoned++;
     this.satisfactionSum += satisfaction;
     this.satisfactionCount++;
+  }
+
+  recordIncident(record: IncidentRecord): void {
+    this.incidents.push(record);
+    this.incidentCosts += record.cost;
   }
 
   get avgSatisfaction(): number | null {
@@ -129,6 +143,8 @@ export class DayLedger {
       wages: this.wages,
       waste: this.waste,
       flashSaleCategories: [...this.flashSaleCategories],
+      incidents: [...this.incidents],
+      incidentCosts: this.incidentCosts,
     };
   }
 }

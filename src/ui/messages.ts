@@ -34,6 +34,8 @@ export const ERROR_MESSAGES: Record<CommandError, string> = {
   'invalid-discount': '限時特價只能選 9 折、8 折或 7 折',
   'flash-sale-active': '這個商品已在限時特價中，結束後才能再開',
   'flash-sale-limit': '同時最多 2 個商品限時特價',
+  'no-pending-incident': '目前沒有需要處理的狀況',
+  'invalid-incident-option': '沒有這個選項',
 };
 
 export const formatMoney = (n: number) => `${n < 0 ? '−' : ''}$${Math.abs(n).toLocaleString('zh-TW')}`;

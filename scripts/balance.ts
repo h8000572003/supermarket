@@ -22,11 +22,11 @@ for (const strategy of STRATEGIES) {
         `首次獲利 第 ${firstProfit} 天  ${last.bankrupt ? '【破產】' : ''}  里程碑 ${milestones.join(' ') || '—'}`,
     );
     if (seed === 1) {
-      console.log('  day  revenue    net    funds  rep  in/served/empty/abandon  staff');
+      console.log('  day  revenue    net    funds  rep  in/served/empty/abandon  staff  incident');
       for (const r of rows) {
         console.log(
           `  ${String(r.day).padStart(3)} ${String(r.revenue).padStart(8)} ${String(r.net).padStart(6)} ${String(r.funds).padStart(8)} ` +
-            `${String(r.reputation).padStart(4)}  ${r.entered}/${r.served}/${r.leftEmpty}/${r.abandoned}  ${r.staff}`,
+            `${String(r.reputation).padStart(4)}  ${r.entered}/${r.served}/${r.leftEmpty}/${r.abandoned}  ${r.staff}  ${r.incidentCosts}`,
         );
       }
     }

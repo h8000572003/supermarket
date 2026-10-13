@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { STARTING_FUNDS } from '../game';
-import { minimal, overspend, simulate, standard } from './strategies';
+import { minimal, neglectResponse, overspend, simulate, standard, worstResponse } from './strategies';
 
 /**
  * 平衡守門：調整數值後，這些經營結果的大方向不應改變。
@@ -28,5 +28,19 @@ describe('平衡', () => {
   it('雇滿店員又高價販售，十天內破產', () => {
     const rows = simulate(overspend, 10, 1);
     expect(rows.at(-1)!.bankrupt).toBe(true);
+  });
+
+  it.each([1, 2, 3])('狀況全選最差的選項，標準經營 30 天內不會破產（種子 %i）', (seed) => {
+    // 一律花錢：狀況支出確實發生，但不足以拖垮標準經營的店
+    const costly = simulate(worstResponse, 30, seed);
+    expect(costly.reduce((s, r) => s + r.incidentCosts, 0)).toBeGreaterThan(0);
+    // 一律不處理：口碑扣分、少一位店員
+    const neglect = simulate(neglectResponse, 30, seed);
+    for (const rows of [costly, neglect]) {
+      expect(rows).toHaveLength(30);
+      expect(rows.some((r) => r.bankrupt)).toBe(false);
+      // 資金從未轉負，離破產還很遠
+      expect(Math.min(...rows.map((r) => r.funds))).toBeGreaterThan(0);
+    }
   });
 });

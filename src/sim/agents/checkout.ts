@@ -76,6 +76,16 @@ export class Checkout {
     return null;
   }
 
+  /** 店員離開（提早下班）：若正在收銀，收銀台改為無人，之後再叫其他店員 */
+  dismiss(staff: StaffAgent): void {
+    for (const r of this.registers) {
+      if (r.cashier === staff) {
+        r.cashier = null;
+        r.idleSteps = 0;
+      }
+    }
+  }
+
   queueLength(registerId: string): number {
     return this.registers.find((r) => r.spot.id === registerId)?.queue.length ?? 0;
   }

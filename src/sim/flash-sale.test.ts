@@ -3,7 +3,7 @@ import { STEP_MS } from './clock/clock';
 import { Game } from './game';
 import type { GameEvent } from './game';
 import { FLASH_SALE_MINUTES, MAX_FLASH_SALES } from './economy/flash-sale';
-import { playThroughDay, runOpenHours } from './test-helpers';
+import { playThroughDay, runOpenHours, tickResolving } from './test-helpers';
 
 const STOCKED = ['cola', 'green-tea', 'chips', 'chocolate', 'cup-noodle', 'bowl-noodle'];
 
@@ -33,12 +33,12 @@ function store(seed = 1) {
 
 /** 以 1x 逐步推進到指定的遊戲時刻（一天中的分鐘數） */
 function tickUntil(game: Game, minute: number) {
-  while (game.phase === 'open' && game.minuteOfDay < minute) game.tick(STEP_MS);
+  while (game.phase === 'open' && game.minuteOfDay < minute) tickResolving(game, STEP_MS);
 }
 
 /** 營業時段跑完（不重新開店），停在每日結算 */
 function finishDay(game: Game) {
-  while (game.phase === 'open') game.tick(STEP_MS * 100);
+  while (game.phase === 'open') tickResolving(game, STEP_MS * 100);
 }
 
 function startOk(game: Game, productId: string, tier: number) {

@@ -4,7 +4,7 @@ import { STEP_MS } from './clock/clock';
 import { MAX_DISPATCHES, Game } from './game';
 import type { DispatchTarget } from './game';
 import { totalQty } from './inventory/batch';
-import { runOpenHours } from './test-helpers';
+import { runOpenHours, tickResolving } from './test-helpers';
 
 const CAP = FIXTURES.fridge.slotCapacity;
 
@@ -36,7 +36,7 @@ function store({ staff = 1, backroom = 12 }: { staff?: number; backroom?: number
 
 /** 逐步推進直到條件成立或打烊 */
 function stepUntil(game: Game, done: () => boolean): void {
-  while (game.phase === 'open' && !done()) game.tick(STEP_MS);
+  while (game.phase === 'open' && !done()) tickResolving(game, STEP_MS);
 }
 
 describe('派工', () => {
@@ -138,7 +138,7 @@ describe('派工', () => {
     const { game, slot, qty } = store();
     game.openStore();
     game.dispatch(slot(0));
-    game.tick(STEP_MS);
+    tickResolving(game, STEP_MS);
     expect(game.staffAgents[0]!.task?.slotIndex).toBe(0);
     expect(game.cancelDispatch(slot(0)).ok).toBe(true);
     expect(game.dispatches).toEqual([]);
@@ -153,7 +153,7 @@ describe('派工', () => {
     const { game, registerTarget } = store();
     game.openStore();
     game.dispatch(registerTarget);
-    game.tick(STEP_MS);
+    tickResolving(game, STEP_MS);
     const agent = game.staffAgents[0]!;
     expect(agent.registerId).not.toBeNull();
     game.cancelDispatch(registerTarget);
@@ -217,7 +217,7 @@ describe('派工與有人排隊的收銀台', () => {
     while (game.phase === 'open' && game.queueLength(register) > 0) {
       expect(agent.registerId).toBe(register);
       expect(agent.task).toBeNull();
-      game.tick(STEP_MS);
+      tickResolving(game, STEP_MS);
     }
     // 隊伍清空後才去處理派工
     stepUntil(game, () => !game.isDispatched(mark));
@@ -244,7 +244,7 @@ describe('派工與有人排隊的收銀台', () => {
       }
       const before = agent.task !== null && agent.carrying.length === 0 && agent.registerId === null;
       if (before && game.dispatches.length > 0) sawDispatchTask = true;
-      game.tick(STEP_MS);
+      tickResolving(game, STEP_MS);
       if (before && agent.registerId === register) pulled = true;
     }
     expect(sawDispatchTask).toBe(true);
@@ -253,5 +253,5 @@ describe('派工與有人排隊的收銀台', () => {
 });
 
 function runToClose(game: Game): void {
-  while (game.phase === 'open') game.tick(STEP_MS * 10);
+  while (game.phase === 'open') tickResolving(game, STEP_MS * 10);
 }

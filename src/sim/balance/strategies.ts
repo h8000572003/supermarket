@@ -3,6 +3,7 @@ import type { CategoryId } from '../catalog/products';
 import type { FixtureKind } from '../catalog/fixtures';
 import { SHIPPING_FEE } from '../economy/purchase-order';
 import { DAILY_RENT, DAILY_WAGE, Game } from '../game';
+import type { PendingIncident } from '../incidents/incidents';
 import { totalQty } from '../inventory/batch';
 import type { Facing } from '../store/geometry';
 import { runOpenHours } from '../test-helpers';
@@ -14,6 +15,21 @@ export interface Strategy {
   setup(game: Game, plan: StorePlan): void;
   /** 每天準備階段（含第 1 天，在 setup 之後） */
   prep(game: Game, plan: StorePlan): void;
+  /** 遇到狀況時選哪個選項（回傳索引）；選到付不起的選項時改選第一個付得起的 */
+  chooseIncidentOption(incident: PendingIncident, game: Game): number;
+}
+
+/** 第一個選項 */
+export const firstOption = (): number => 0;
+
+/** 最便宜的選項（同價取前面的） */
+export function cheapestOption(incident: PendingIncident): number {
+  return incident.options.reduce((best, o, i, all) => (o.cost < (all[best] as typeof o).cost ? i : best), 0);
+}
+
+/** 最花錢的選項（同價取後面的） */
+export function costliestOption(incident: PendingIncident): number {
+  return incident.options.reduce((best, o, i, all) => (o.cost >= (all[best] as typeof o).cost ? i : best), 0);
 }
 
 /** 策略記住的店面配置：陳列櫃 id 與預計放的商品 */
@@ -34,6 +50,8 @@ export interface DayRow {
   readonly leftEmpty: number;
   readonly abandoned: number;
   readonly staff: number;
+  /** 當天狀況支出 */
+  readonly incidentCosts: number;
   readonly milestones: readonly string[];
   readonly bankrupt: boolean;
 }
@@ -125,6 +143,7 @@ export const standard: Strategy = {
     }
     parOrder(game, plan);
   },
+  chooseIncidentOption: firstOption,
 };
 
 /** 偷懶：只開一個貨架、一位店員，固定少量進貨 */
@@ -139,6 +158,7 @@ export const minimal: Strategy = {
   prep(game, plan) {
     parOrder(game, plan);
   },
+  chooseIncidentOption: cheapestOption,
 };
 
 /** 揮霍：雇滿店員、高價販售 */
@@ -152,9 +172,27 @@ export const overspend: Strategy = {
   prep(game, plan) {
     parOrder(game, plan);
   },
+  chooseIncidentOption: costliestOption,
 };
 
-export const STRATEGIES: readonly Strategy[] = [standard, minimal, overspend];
+/**
+ * 最差應對（守門測試用）：標準經營的店，但狀況一律選最花錢的選項，
+ * 付不起時才選不花錢、帶負面效果的那個。
+ */
+export const worstResponse: Strategy = {
+  ...standard,
+  name: '最差應對',
+  chooseIncidentOption: costliestOption,
+};
+
+/** 標準經營的店，狀況一律選不花錢的選項（口碑扣分、少一位店員） */
+export const neglectResponse: Strategy = {
+  ...standard,
+  name: '一律不處理',
+  chooseIncidentOption: cheapestOption,
+};
+
+export const STRATEGIES: readonly Strategy[] = [standard, minimal, overspend, worstResponse, neglectResponse];
 
 /** 以策略經營 days 天（遇破產提前結束），回傳每天的結果 */
 export function simulate(strategy: Strategy, days: number, seed: number): DayRow[] {
@@ -165,7 +203,10 @@ export function simulate(strategy: Strategy, days: number, seed: number): DayRow
   for (let d = 0; d < days; d++) {
     strategy.prep(game, plan);
     // 準備階段把格位補滿，相當於開店前店員已上架
-    runOpenHours(game);
+    runOpenHours(game, (incident) => {
+      const choice = strategy.chooseIncidentOption(incident, game);
+      return incident.options[choice]?.available ? choice : incident.options.findIndex((o) => o.available);
+    });
     const r = game.lastReport!;
     rows.push({
       day: r.day,
@@ -178,6 +219,7 @@ export function simulate(strategy: Strategy, days: number, seed: number): DayRow
       leftEmpty: r.customers.leftEmpty,
       abandoned: r.customers.abandoned,
       staff: game.staff.length,
+      incidentCosts: r.incidentCosts,
       milestones: r.progress.milestonesReached,
       bankrupt: r.progress.bankrupt,
     });

@@ -4,7 +4,7 @@ import type { Game } from '../sim/game';
 import { BANKRUPTCY_DAYS, MILESTONES } from '../sim/progress/progress';
 import type { DailyReport } from '../sim/report/daily-report';
 import { useGameVersion } from './hooks';
-import { formatMoney } from './messages';
+import { formatMoney, formatTime } from './messages';
 import { startNewGame } from './new-game';
 
 /** 每日結算畫面；破產時改為結束畫面 */
@@ -62,6 +62,12 @@ export function DailyReportPanel({ game }: { game: Game }) {
             <dd>{formatExpense(report.rent)}</dd>
             <dt>店員日薪</dt>
             <dd>{formatExpense(report.wages)}</dd>
+            {report.incidents.length > 0 && (
+              <>
+                <dt>狀況支出</dt>
+                <dd>{formatExpense(report.incidentCosts)}</dd>
+              </>
+            )}
             <dt className="total">淨利</dt>
             <dd className={`total ${net < 0 ? 'negative' : 'positive'}`}>{formatSigned(net)}</dd>
             <dt>目前資金</dt>
@@ -79,6 +85,20 @@ export function DailyReportPanel({ game }: { game: Game }) {
             </p>
           )}
         </section>
+
+        {report.incidents.length > 0 && (
+          <section>
+            <h3>今日狀況</h3>
+            <ul className="report-incidents">
+              {report.incidents.map((i) => (
+                <li key={`${i.kind}-${i.minute}`}>
+                  <span className="clock">{formatTime(i.minute)}</span> {i.name}：{i.optionLabel}
+                  {i.cost > 0 && <span className="negative">（−{formatMoney(i.cost)}）</span>}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         <section>
           <h3>顧客</h3>
