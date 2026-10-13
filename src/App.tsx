@@ -8,6 +8,8 @@ import type { Controller } from './ui/controller';
 import { Hud } from './ui/Hud';
 import { MilestonesPanel } from './ui/MilestonesPanel';
 import { StockPanel } from './ui/StockPanel';
+import { formatMoney } from './ui/messages';
+import { productById } from './sim/catalog/products';
 
 export function App({ controller, sounds }: { controller: Controller; sounds: SoundBoard }) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -40,6 +42,20 @@ export function App({ controller, sounds }: { controller: Controller; sounds: So
     });
     return () => cancelAnimationFrame(frame);
   }, [controller]);
+
+  // 限時特價到期時提示店長（售價已恢復）
+  useEffect(
+    () =>
+      controller.game.onEvent((e) => {
+        if (e.type !== 'flash-sale-ended') return;
+        const product = productById(e.productId);
+        const price = controller.game.salePrice(e.productId);
+        controller.interaction.update({
+          message: `限時特價結束：${product?.name ?? e.productId} 恢復售價 ${formatMoney(price ?? 0)}`,
+        });
+      }),
+    [controller],
+  );
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

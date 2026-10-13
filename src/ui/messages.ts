@@ -22,9 +22,22 @@ export const ERROR_MESSAGES: Record<CommandError, string> = {
   'below-min-order': '低於最低訂購量',
   'staff-full': '店員人數已達上限',
   'unknown-staff': '找不到這位店員',
+  'invalid-discount': '限時特價只能選 9 折、8 折或 7 折',
+  'flash-sale-active': '這個商品已在限時特價中，結束後才能再開',
+  'flash-sale-limit': '同時最多 2 個商品限時特價',
 };
 
 export const formatMoney = (n: number) => `${n < 0 ? '−' : ''}$${Math.abs(n).toLocaleString('zh-TW')}`;
+
+/** 遊戲分鐘數 → 「1 小時 05 分」或「45 分」 */
+export const formatDuration = (minutes: number) => {
+  const m = Math.max(0, Math.ceil(minutes));
+  const h = Math.floor(m / 60);
+  return h > 0 ? `${h} 小時 ${String(m % 60).padStart(2, '0')} 分` : `${m} 分`;
+};
+
+/** 折扣檔位 → 「8 折」 */
+export const formatDiscount = (tier: number) => `${Math.round(tier * 10)} 折`;
 
 /** 一天中的分鐘數 → HH:MM */
 export const formatTime = (minuteOfDay: number) => {

@@ -146,7 +146,8 @@ function CategorySales({ report }: { report: DailyReport }) {
     if (category) byCategory.set(category, (byCategory.get(category) ?? 0) + qty);
   }
   const max = Math.max(1, ...byCategory.values());
-  const rows = CATEGORY_IDS.filter((id) => byCategory.has(id));
+  const flashSale = new Set(report.flashSaleCategories);
+  const rows = CATEGORY_IDS.filter((id) => byCategory.has(id) || flashSale.has(id));
   if (rows.length === 0) return <p className="report-note">今天沒有賣出任何商品。</p>;
   return (
     <ul className="bars">
@@ -159,6 +160,7 @@ function CategorySales({ report }: { report: DailyReport }) {
               <span style={{ width: `${(qty / max) * 100}%` }} />
             </span>
             <span className="bar-value">{qty}</span>
+            <span>{flashSale.has(id) && <span className="flash-sale-tag">曾限時特價</span>}</span>
           </li>
         );
       })}

@@ -102,6 +102,8 @@ const EVENT_SOUND: Record<GameEvent['type'], SoundName> = {
   abandon: 'abandon',
   'day-ended': 'day-end',
   milestone: 'milestone',
+  'flash-sale-started': 'place',
+  'flash-sale-ended': 'click',
 };
 
 /** 讓模擬事件發出對應音效；回傳取消函式 */

@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { CATEGORIES, PRODUCTS } from '../sim/catalog/products';
+import { FLASH_SALE_TIERS, MAX_FLASH_SALES } from '../sim/economy/flash-sale';
 import { SHIPPING_FEE, orderTotal } from '../sim/economy/purchase-order';
 import { isOpeningDelivery, phaseError } from '../sim/game';
 import type { Controller } from './controller';
 import { useGameVersion } from './hooks';
-import { formatMoney } from './messages';
+import { formatDiscount, formatDuration, formatMoney } from './messages';
 
-/** 商品與進貨：調整售價、查看倉庫庫存、下進貨單；營業時段可開啟查看，但售價與進貨單鎖定 */
+/** 商品與進貨：調整售價、查看倉庫庫存、下進貨單；營業時段售價與進貨單鎖定，可開始限時特價 */
 export function StockPanel({ controller, onClose }: { controller: Controller; onClose: () => void }) {
   const { game, interaction } = controller;
   useGameVersion(game);
@@ -14,6 +15,9 @@ export function StockPanel({ controller, onClose }: { controller: Controller; on
   const [priceDraft, setPriceDraft] = useState<Record<string, string>>({});
 
   const editable = phaseError(game.phase, 'prep') === null;
+  const openHours = phaseError(game.phase, 'open') === null;
+  const flashSales = game.flashSales;
+  const flashSaleFull = flashSales.length >= MAX_FLASH_SALES;
   const lines = Object.entries(qty)
     .filter(([, q]) => q > 0)
     .map(([productId, q]) => ({ productId, qty: q }));
@@ -41,6 +45,12 @@ export function StockPanel({ controller, onClose }: { controller: Controller; on
     });
   };
 
+  const startFlashSale = (productId: string, tier: number) => {
+    const r = game.startFlashSale(productId, tier);
+    if (r.ok) interaction.update({ message: null });
+    else controller.showError(r.error);
+  };
+
   const pendingQty = (productId: string) =>
     game.pendingOrders.flatMap((o) => o.lines).filter((l) => l.productId === productId).reduce((s, l) => s + l.qty, 0);
 
@@ -54,7 +64,8 @@ export function StockPanel({ controller, onClose }: { controller: Controller; on
       </header>
       {game.phase === 'open' && (
         <p className="side-panel-note" role="note">
-          營業中只能使用限時特價與緊急叫貨；售價與一般進貨單請在準備階段調整。
+          營業中只能使用限時特價與緊急叫貨；售價與一般進貨單請在準備階段調整。限時特價持續 2 小時，同時最多{' '}
+          {MAX_FLASH_SALES} 個（{flashSales.length}/{MAX_FLASH_SALES}）。
         </p>
       )}
       <table>
@@ -67,11 +78,13 @@ export function StockPanel({ controller, onClose }: { controller: Controller; on
             <th>倉庫</th>
             <th>在途</th>
             <th>訂購量</th>
+            {openHours && <th>限時特價</th>}
           </tr>
         </thead>
         <tbody>
           {PRODUCTS.map((p) => {
             const unlocked = game.isUnlocked(p.category);
+            const sale = flashSales.find((s) => s.productId === p.id);
             return (
               <tr key={p.id} className={unlocked ? '' : 'locked'}>
                 <td>
@@ -107,6 +120,29 @@ export function StockPanel({ controller, onClose }: { controller: Controller; on
                     onChange={(e) => setQty((q) => ({ ...q, [p.id]: Math.max(0, Math.floor(Number(e.target.value))) }))}
                   />
                 </td>
+                {openHours && (
+                  <td className="flash-sale-cell">
+                    {sale ? (
+                      <span className="flash-sale-active">
+                        {formatDiscount(sale.tier)} {formatMoney(sale.price)}
+                        <small>剩 {formatDuration(sale.remainingMinutes)}</small>
+                      </span>
+                    ) : (
+                      <span className="flash-sale-tiers" role="group" aria-label={`${p.name}限時特價`}>
+                        {FLASH_SALE_TIERS.map((tier) => (
+                          <button
+                            key={tier}
+                            disabled={!unlocked || flashSaleFull}
+                            title={flashSaleFull ? `同時最多 ${MAX_FLASH_SALES} 個商品限時特價` : undefined}
+                            onClick={() => startFlashSale(p.id, tier)}
+                          >
+                            {formatDiscount(tier)}
+                          </button>
+                        ))}
+                      </span>
+                    )}
+                  </td>
+                )}
               </tr>
             );
           })}
