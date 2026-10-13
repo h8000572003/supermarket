@@ -2,6 +2,7 @@ import { FIXTURES, FIXTURE_KINDS } from '../sim/catalog/fixtures';
 import { DAILY_WAGE, MAX_STAFF, sellRefund } from '../sim/game';
 import type { Controller } from './controller';
 import { useGameVersion, useInteraction } from './hooks';
+import { DispatchPanel } from './DispatchPanel';
 import { SlotPanel } from './SlotPanel';
 import { formatMoney } from './messages';
 
@@ -12,11 +13,19 @@ export function BuildToolbar({ controller }: { controller: Controller }) {
   const selected = selectedId ? game.fixture(selectedId) : undefined;
 
   if (game.phase !== 'prep') {
+    const open = game.phase === 'open';
     return (
       <div className="toolbar-area">
         {message && <div className="toast">{message}</div>}
+        {open && selected && (selected.kind === 'register' || FIXTURES[selected.kind].slots > 0) && (
+          <DispatchPanel controller={controller} fixture={selected} />
+        )}
         <div className="toolbar">
-          <span className="hint">目前只能觀察；擺設、進貨與定價請在準備階段進行</span>
+          <span className="hint">
+            {open
+              ? '點選格位或收銀台可「優先處理」派工；擺設、進貨與定價請在準備階段進行'
+              : '目前只能觀察；擺設、進貨與定價請在準備階段進行'}
+          </span>
         </div>
       </div>
     );

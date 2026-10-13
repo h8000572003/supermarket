@@ -81,8 +81,8 @@ export class Checkout {
   }
 
   /**
-   * 推進一步：替有人排隊的收銀台叫店員、結帳。
-   * onSale 在每位顧客結帳完成時呼叫。
+   * 推進一步：替有人排隊的收銀台叫店員、結帳；再替派工的收銀台（held）叫店員待命。
+   * held 中的收銀台不會解除收銀。onSale 在每位顧客結帳完成時呼叫。
    */
   update(
     staff: readonly StaffAgent[],
@@ -90,6 +90,7 @@ export class Checkout {
     reservedSlots: Set<string>,
     customerWorld: CustomerWorld,
     onSale: (customer: CustomerAgent) => void,
+    held: ReadonlySet<string> = new Set(),
   ): void {
     for (const r of this.registers) {
       if (r.queue.length > 0 && !r.cashier) {
@@ -115,7 +116,7 @@ export class Checkout {
         customer.paid(customerWorld);
       }
 
-      if (r.cashier && r.queue.length === 0) {
+      if (r.cashier && r.queue.length === 0 && !held.has(r.spot.id)) {
         if (++r.idleSteps >= CASHIER_RELEASE_STEPS) {
           r.cashier.releaseRegister();
           r.cashier = null;
@@ -125,14 +126,35 @@ export class Checkout {
         r.idleSteps = 0;
       }
     }
+
+    // 派工的收銀台優先序低於有人排隊的收銀台；不搶正在處理格位派工的店員
+    for (const r of this.registers) {
+      if (!held.has(r.spot.id) || r.cashier) continue;
+      const cashier = nearestAvailable(staff, r.spot.staffTile, (s) => !s.onDispatch);
+      if (cashier) {
+        cashier.assignRegister(r.spot.id, r.spot.staffTile, staffWorld, reservedSlots);
+        r.cashier = cashier;
+      }
+    }
+  }
+
+  /** 店員已站在收銀台、且沒有人排隊 */
+  isStaffedAndClear(registerId: string): boolean {
+    const r = this.registers.find((x) => x.spot.id === registerId);
+    return r?.cashier?.activity === 'cashier' && r.queue.length === 0;
   }
 }
 
-function nearestAvailable(staff: readonly StaffAgent[], tile: GridPoint): StaffAgent | null {
+/** 最近有空（沒拿著貨、不在收銀）的店員 */
+export function nearestAvailable(
+  staff: readonly StaffAgent[],
+  tile: GridPoint,
+  accept: (s: StaffAgent) => boolean = () => true,
+): StaffAgent | null {
   let best: StaffAgent | null = null;
   let bestDist = Infinity;
   for (const s of staff) {
-    if (!s.availableForRegister) continue;
+    if (!s.availableForRegister || !accept(s)) continue;
     const d = Math.abs(s.pos.x - tile.x) + Math.abs(s.pos.y - tile.y);
     if (d < bestDist) {
       best = s;

@@ -1,5 +1,5 @@
 import type { FixtureKind } from '../sim/catalog/fixtures';
-import type { CommandError, Game } from '../sim/game';
+import type { CommandError, DispatchTarget, Game } from '../sim/game';
 import { rotateClockwise } from '../sim/store/geometry';
 import type { GridPoint } from '../sim/store/layout';
 import type { Interaction } from './interaction';
@@ -91,6 +91,13 @@ export class Controller {
     const last = this.game.staff.at(-1);
     if (!last) return;
     const r = this.game.fireStaff(last.id);
+    if (r.ok) this.interaction.update({ message: null });
+    else this.showError(r.error);
+  }
+
+  /** 營業中：「優先處理」標記或取消 */
+  toggleDispatch(target: DispatchTarget): void {
+    const r = this.game.isDispatched(target) ? this.game.cancelDispatch(target) : this.game.dispatch(target);
     if (r.ok) this.interaction.update({ message: null });
     else this.showError(r.error);
   }

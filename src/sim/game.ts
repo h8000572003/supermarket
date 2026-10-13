@@ -2,9 +2,10 @@ import { FIXTURES, SELL_REFUND_RATE } from './catalog/fixtures';
 import type { FixtureKind } from './catalog/fixtures';
 import { CATEGORIES, PRODUCTS, STARTING_CATEGORIES, productById } from './catalog/products';
 import type { CategoryId } from './catalog/products';
-import { Checkout } from './agents/checkout';
+import { Checkout, nearestAvailable } from './agents/checkout';
 import type { RegisterSpot } from './agents/checkout';
 import { CustomerAgent } from './agents/customer';
+import { slotKey } from './agents/restock';
 import type { CustomerWorld } from './agents/customer';
 import { LAST_ENTRY_BEFORE_CLOSE, MAX_CUSTOMERS_IN_STORE, arrivalsPerHour, rollShoppingList } from './agents/demand';
 import { StaffAgent } from './agents/staff';
@@ -68,7 +69,21 @@ export type CommandError =
   /** 店員人數已達上限 */
   | 'staff-full'
   /** 找不到指定的店員 */
-  | 'unknown-staff';
+  | 'unknown-staff'
+  /** 只能在營業時段執行 */
+  | 'not-open-phase'
+  /** 派工標記已達上限 */
+  | 'dispatch-full'
+  /** 這個目標已經派工 */
+  | 'already-dispatched'
+  /** 這個目標沒有派工 */
+  | 'not-dispatched'
+  /** 格位沒有指定商品 */
+  | 'slot-unassigned'
+  /** 格位已經補滿 */
+  | 'slot-full'
+  /** 倉庫沒有這個商品 */
+  | 'no-backroom-stock';
 
 export type Result<T = void> = { ok: true; value: T } | { ok: false; error: CommandError };
 
@@ -81,6 +96,18 @@ export const DAILY_RENT = 600;
 /** 每位店員的日薪 */
 export const DAILY_WAGE = 600;
 export const MAX_STAFF = 6;
+/** 同時最多的派工標記數 */
+export const MAX_DISPATCHES = 2;
+
+/** 派工的目標：某個陳列櫃的格位，或某台收銀台 */
+export type DispatchTarget =
+  | { readonly kind: 'slot'; readonly fixtureId: string; readonly slotIndex: number }
+  | { readonly kind: 'register'; readonly registerId: string };
+
+const sameTarget = (a: DispatchTarget, b: DispatchTarget): boolean =>
+  a.kind === 'slot'
+    ? b.kind === 'slot' && a.fixtureId === b.fixtureId && a.slotIndex === b.slotIndex
+    : b.kind === 'register' && a.registerId === b.registerId;
 
 /** 模擬中發生、值得畫面或音效回應的瞬間事件 */
 export type GameEvent =
@@ -144,6 +171,8 @@ export class Game {
   private nextCustomerId = 1;
   private checkout = new Checkout([], () => false);
   private readonly reservedSlots = new Set<string>();
+  /** 營業中的派工標記（瞬時狀態，不存檔；打烊時清除） */
+  private _dispatches: DispatchTarget[] = [];
   private nextFixtureId = 1;
   private _version = 0;
   private readonly listeners = new Set<() => void>();
@@ -286,6 +315,15 @@ export class Game {
   /** 收銀台目前排隊人數 */
   queueLength(registerId: string): number {
     return this.checkout.queueLength(registerId);
+  }
+
+  /** 營業中的派工標記 */
+  get dispatches(): readonly DispatchTarget[] {
+    return this._dispatches;
+  }
+
+  isDispatched(target: DispatchTarget): boolean {
+    return this._dispatches.some((d) => sameTarget(d, target));
   }
 
   /** 今天到目前為止的帳目（營業中即時顯示用） */
@@ -469,6 +507,91 @@ export class Game {
     return ok(undefined);
   }
 
+  /**
+   * 派工：標記格位或收銀台優先處理，由最近有空的店員去做。
+   * 格位會被補滿（不受補貨門檻限制）；收銀台會有一位店員待命到隊伍清空。完成後標記自動清除。
+   */
+  dispatch(target: DispatchTarget): Result {
+    if (this._phase !== 'open') return fail('not-open-phase');
+    const error = this.checkDispatchTarget(target);
+    if (error) return fail(error);
+    if (this.isDispatched(target)) return fail('already-dispatched');
+    if (this._dispatches.length >= MAX_DISPATCHES) return fail('dispatch-full');
+    if (target.kind === 'slot') {
+      const slot = this.inventory.slot(target.fixtureId, target.slotIndex);
+      if (!slot?.productId) return fail('slot-unassigned');
+      if (this.slotIsFull(target.fixtureId, target.slotIndex)) return fail('slot-full');
+      if (this.inventory.backroomQty(slot.productId) === 0) return fail('no-backroom-stock');
+    }
+    this._dispatches = [...this._dispatches, target];
+    this.changed();
+    return ok(undefined);
+  }
+
+  /** 取消派工：店員放下尚未取貨的工作，恢復自動工作 */
+  cancelDispatch(target: DispatchTarget): Result {
+    if (this._phase !== 'open') return fail('not-open-phase');
+    if (!this.isDispatched(target)) return fail('not-dispatched');
+    this._dispatches = this._dispatches.filter((d) => !sameTarget(d, target));
+    if (target.kind === 'slot') {
+      for (const agent of this.agents) {
+        const t = agent.task;
+        if (t && t.fixtureId === target.fixtureId && t.slotIndex === target.slotIndex) {
+          agent.cancelDispatch(this.reservedSlots);
+        }
+      }
+    }
+    this.changed();
+    return ok(undefined);
+  }
+
+  private checkDispatchTarget(target: DispatchTarget): CommandError | null {
+    if (target.kind === 'register') {
+      return this.layout.get(target.registerId)?.kind === 'register' ? null : 'unknown-fixture';
+    }
+    const fixture = this.layout.get(target.fixtureId);
+    if (!fixture || FIXTURES[fixture.kind].slots === 0) return 'invalid-slot';
+    return this.inventory.slot(target.fixtureId, target.slotIndex) ? null : 'invalid-slot';
+  }
+
+  private slotIsFull(fixtureId: string, slotIndex: number): boolean {
+    const fixture = this.layout.get(fixtureId);
+    const slot = this.inventory.slot(fixtureId, slotIndex);
+    return !!fixture && !!slot && totalQty(slot.batches) >= FIXTURES[fixture.kind].slotCapacity;
+  }
+
+  /** 把尚未有人處理的格位派工交給最近有空的店員 */
+  private assignSlotDispatches(): void {
+    for (const d of this._dispatches) {
+      if (d.kind !== 'slot' || this.reservedSlots.has(slotKey(d.fixtureId, d.slotIndex))) continue;
+      const task = this.staffWorld
+        .restockCandidates()
+        .find((c) => c.fixtureId === d.fixtureId && c.slotIndex === d.slotIndex);
+      if (!task || task.qty >= task.capacity || task.backroomQty === 0) continue;
+      const staff = nearestAvailable(
+        this.agents,
+        this.staffWorld.slotAccessTile(d.fixtureId, d.slotIndex),
+        (s) => !s.onDispatch,
+      );
+      staff?.assignDispatch(task, this.staffWorld, this.reservedSlots);
+    }
+  }
+
+  /** 清除已完成（或已無法完成）的派工標記 */
+  private clearFinishedDispatches(): void {
+    const remaining = this._dispatches.filter((d) => {
+      if (d.kind === 'register') return !this.checkout.isStaffedAndClear(d.registerId);
+      if (this.slotIsFull(d.fixtureId, d.slotIndex)) return false;
+      // 沒有店員在處理、倉庫也沒貨了：無法完成
+      const productId = this.inventory.slot(d.fixtureId, d.slotIndex)?.productId;
+      const claimed = this.reservedSlots.has(slotKey(d.fixtureId, d.slotIndex));
+      return claimed || (!!productId && this.inventory.backroomQty(productId) > 0);
+    });
+    if (remaining.length === this._dispatches.length) return;
+    this._dispatches = remaining;
+    this.changed();
+  }
+
   /** 準備階段 → 營業時段：店員從倉庫門出發 */
   openStore(): Result {
     if (this._phase !== 'prep') return fail('not-prep-phase');
@@ -477,6 +600,7 @@ export class Game {
     this.stepRemainderMs = 0;
     this.agents = this._staff.map((s) => new StaffAgent(s.id, BACKROOM_DOOR));
     this.reservedSlots.clear();
+    this._dispatches = [];
     this.customers = [];
     this.checkout = new Checkout(this.registerSpots(), (p) => this.layout.isWalkable(p));
     this.emit({ type: 'store-opened' });
@@ -504,16 +628,27 @@ export class Game {
   /** 推進一個固定步長；營業時段結束時打烊 */
   private advanceStep(): void {
     this.maybeSpawnCustomer();
-    this.checkout.update(this.agents, this.staffWorld, this.reservedSlots, this.customerWorld, (c) => {
-      let amount = 0;
-      for (const item of c.basket) {
-        this.ledger.recordSale(item.productId, item.price);
-        amount += item.price;
-      }
-      this._funds += amount;
-      this.emit({ type: 'sale', amount });
-    });
+    // 店員工作優先序：有人排隊的收銀台 > 派工標記 > 一般補貨
+    const heldRegisters = new Set(this._dispatches.flatMap((d) => (d.kind === 'register' ? [d.registerId] : [])));
+    this.checkout.update(
+      this.agents,
+      this.staffWorld,
+      this.reservedSlots,
+      this.customerWorld,
+      (c) => {
+        let amount = 0;
+        for (const item of c.basket) {
+          this.ledger.recordSale(item.productId, item.price);
+          amount += item.price;
+        }
+        this._funds += amount;
+        this.emit({ type: 'sale', amount });
+      },
+      heldRegisters,
+    );
+    this.assignSlotDispatches();
     for (const agent of this.agents) agent.update(this.staffWorld, this.reservedSlots);
+    if (this._dispatches.length > 0) this.clearFinishedDispatches();
     for (const customer of this.customers) customer.update(this.customerWorld);
     this.removeDepartedCustomers();
     this._step++;
@@ -529,6 +664,7 @@ export class Game {
     for (const agent of this.agents) this.inventory.receive(agent.carrying);
     this.agents = [];
     this.reservedSlots.clear();
+    this._dispatches = [];
     this.ledger.rent = DAILY_RENT;
     this.ledger.wages = this._staff.length * DAILY_WAGE;
     this._funds -= this.ledger.rent + this.ledger.wages;
