@@ -14,6 +14,12 @@ import { createFixtureSprites, loadFixtureTextures } from './fixture-sprites';
 import { createStockItems, drawStockAlerts, loadProductTextures } from './stock-visuals';
 import type { FixtureStyle } from './fixture-sprites';
 import { TILE_HEIGHT, TILE_WIDTH, gridToScreen, screenToGrid, tileDiamond } from './iso';
+import type { ScreenPoint } from './iso';
+import { Camera } from './camera';
+import type { StoreBounds, Viewport } from './camera';
+import { GestureTracker } from './gestures';
+import { pickFixture } from './pick';
+import { LANDSCAPE_PHONE_QUERY, NARROW_QUERY, matches } from '../ui/media';
 
 const COLORS = {
   background: 0x2b2f3a,
@@ -36,11 +42,41 @@ const DISPATCH_BADGE_LIFT = TILE_HEIGHT * 2.6;
 
 const WALL_HEIGHT = TILE_HEIGHT * 2.5;
 const DOOR_HEIGHT = TILE_HEIGHT * 1.6;
-const MIN_ZOOM = 0.5;
-const MAX_ZOOM = 2.5;
+
+/** 店面（含牆）在場景座標中的範圍：左右是地板菱形的寬，上緣是牆頂、下緣是地板最前角 */
+const STORE_BOUNDS: StoreBounds = {
+  width: ((STORE_WIDTH + STORE_DEPTH) * TILE_WIDTH) / 2,
+  height: ((STORE_WIDTH + STORE_DEPTH) * TILE_HEIGHT) / 2 + WALL_HEIGHT,
+  center: {
+    x: gridToScreen(STORE_WIDTH / 2, STORE_DEPTH / 2).x,
+    y: (gridToScreen(STORE_WIDTH, STORE_DEPTH).y - WALL_HEIGHT) / 2,
+  },
+};
+
+/** 依版面預留 HUD 與工具列的位置；與 styles.css 的版面對應 */
+function viewportOf(app: Application): Viewport {
+  const { width, height } = app.screen;
+  const reserve = matches(LANDSCAPE_PHONE_QUERY)
+    ? { top: 56, right: 164, bottom: 8, left: 8 }
+    : matches(NARROW_QUERY)
+      ? { top: 64, right: 0, bottom: 150, left: 0 }
+      : { top: 72, right: 0, bottom: 140, left: 0 };
+  return { width, height, reserve };
+}
 
 export interface StoreScene {
   destroy(): void;
+  /** 鏡頭是否在預設位置（沒有縮放或平移過） */
+  readonly viewIsDefault: boolean;
+  /** 鏡頭每次改變就遞增；供介面元件跟著重新定位 */
+  readonly viewVersion: number;
+  resetView(): void;
+  /** 平移鏡頭，讓設施落在畫面的指定區域（client 座標）內 */
+  revealFixture(id: string, area: { top: number; bottom: number; left: number; right: number }): void;
+  /** 網格座標（可帶小數）→ 視窗 client 座標 */
+  gridToClient(p: { x: number; y: number }): ScreenPoint;
+  /** 鏡頭移動或縮放時通知 */
+  subscribeView(listener: () => void): () => void;
 }
 
 /** 建立等角店面場景並掛到 host 元素上；只讀取 game 狀態，輸入交給 controller */
@@ -48,7 +84,14 @@ export async function createStoreScene(host: HTMLElement, controller: Controller
   const { game, interaction } = controller;
   const app = new Application();
   await Promise.all([
-    app.init({ resizeTo: host, background: COLORS.background, antialias: true }),
+    app.init({
+      resizeTo: host,
+      background: COLORS.background,
+      antialias: true,
+      // 手機螢幕的像素密度高，用實際解析度畫才不會糊；上限 2 以免太耗效能
+      resolution: Math.min(window.devicePixelRatio || 1, 2),
+      autoDensity: true,
+    }),
     loadFixtureTextures(),
     loadAgentTextures(),
     loadProductTextures(),
@@ -64,44 +107,86 @@ export async function createStoreScene(host: HTMLElement, controller: Controller
   const markers = new Graphics();
   world.addChild(drawWalls(), drawFloor(), drawEntrance(), overlay, objects, stockAlerts, markers);
 
-  // 實際縮放 = 依畫面大小自動貼合的基準 × 玩家以滾輪調整的倍率
-  let userZoom = 1;
-  const layout = () => {
-    const zoom = fitZoom(app.screen.width, app.screen.height) * userZoom;
-    // 店面中心置於畫面中央
-    const center = gridToScreen(STORE_WIDTH / 2, STORE_DEPTH / 2);
-    world.scale.set(zoom);
-    world.position.set(app.screen.width / 2 - center.x * zoom, app.screen.height / 2 - center.y * zoom);
+  const camera = new Camera(viewportOf(app), STORE_BOUNDS);
+  const viewListeners = new Set<() => void>();
+  let viewVersion = 0;
+  const applyCamera = () => {
+    viewVersion++;
+    world.scale.set(camera.scale);
+    const pos = camera.position;
+    world.position.set(pos.x, pos.y);
+    for (const listener of viewListeners) listener();
   };
-  layout();
-  app.renderer.on('resize', layout);
-
-  const onWheel = (e: WheelEvent) => {
-    e.preventDefault();
-    userZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, userZoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1)));
-    layout();
+  applyCamera();
+  const onResize = () => {
+    camera.setViewport(viewportOf(app));
+    applyCamera();
   };
-  const onContextMenu = (e: MouseEvent) => e.preventDefault();
-  app.canvas.addEventListener('wheel', onWheel, { passive: false });
-  app.canvas.addEventListener('contextmenu', onContextMenu);
+  app.renderer.on('resize', onResize);
 
-  const cellAt = (global: { x: number; y: number }): GridPoint | null => {
-    const local = world.toLocal(global);
+  const cellAt = (screen: ScreenPoint): GridPoint | null => {
+    const local = camera.toWorld(screen);
     const cell = screenToGrid(local.x, local.y);
     return isInsideStore(cell) ? cell : null;
   };
 
-  app.stage.eventMode = 'static';
-  app.stage.hitArea = app.screen;
-  app.stage.on('pointermove', (e) => controller.hover(cellAt(e.global)));
-  app.stage.on('pointerleave', () => controller.hover(null));
-  app.stage.on('pointerdown', (e) => {
-    if (e.button === 2) return controller.cancel();
-    if (e.button !== 0) return;
-    const cell = cellAt(e.global);
-    controller.hover(cell);
-    if (cell) controller.click(cell);
+  const gestures = new GestureTracker({
+    hover: (p) => controller.hover(p ? cellAt(p) : null),
+    secondary: () => controller.cancel(),
+    pan: (dx, dy) => {
+      camera.panBy(dx, dy);
+      applyCamera();
+    },
+    pinch: (center, factor) => {
+      camera.zoomAt(center, factor);
+      applyCamera();
+    },
+    tap: (p, pointerType) => {
+      const { tool } = interaction.state;
+      const cell = cellAt(p);
+      if (tool.mode === 'select') {
+        // 點到設施的圖本身（不只是底下的地板格）就選取它
+        const picked = pickFixture(game.fixtures, camera.toWorld(p));
+        controller.select(picked?.id ?? (cell ? game.fixtureAt(cell)?.id : undefined) ?? null);
+        // 觸控沒有 hover：不留下最後點過的白框
+        controller.hover(pointerType === 'mouse' ? cell : null);
+        return;
+      }
+      controller.hover(cell);
+      if (cell) controller.click(cell);
+    },
   });
+
+  const canvas = app.canvas;
+  const sample = (e: PointerEvent) => {
+    const rect = canvas.getBoundingClientRect();
+    return { id: e.pointerId, x: e.clientX - rect.left, y: e.clientY - rect.top, button: e.button, pointerType: e.pointerType };
+  };
+  const onPointerDown = (e: PointerEvent) => {
+    if (e.button === 0) canvas.setPointerCapture(e.pointerId);
+    gestures.down(sample(e));
+  };
+  const onPointerMove = (e: PointerEvent) => gestures.move(sample(e));
+  const onPointerUp = (e: PointerEvent) => gestures.up(sample(e));
+  const onPointerCancel = (e: PointerEvent) => gestures.cancel(sample(e));
+  const onPointerLeave = (e: PointerEvent) => gestures.leave(e);
+  const onWheel = (e: WheelEvent) => {
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    camera.zoomAt({ x: e.clientX - rect.left, y: e.clientY - rect.top }, e.deltaY < 0 ? 1.1 : 1 / 1.1);
+    applyCamera();
+  };
+  const onContextMenu = (e: MouseEvent) => e.preventDefault();
+  const listeners: [string, EventListener, AddEventListenerOptions?][] = [
+    ['pointerdown', onPointerDown as EventListener],
+    ['pointermove', onPointerMove as EventListener],
+    ['pointerup', onPointerUp as EventListener],
+    ['pointercancel', onPointerCancel as EventListener],
+    ['pointerleave', onPointerLeave as EventListener],
+    ['wheel', onWheel as EventListener, { passive: false }],
+    ['contextmenu', onContextMenu as EventListener],
+  ];
+  for (const [type, fn, opts] of listeners) canvas.addEventListener(type, fn, opts);
 
   const redraw = () => {
     drawObjects(objects, game, controller);
@@ -153,9 +238,38 @@ export async function createStoreScene(host: HTMLElement, controller: Controller
     destroy() {
       unsubscribeGame();
       unsubscribeInteraction();
-      app.canvas.removeEventListener('wheel', onWheel);
-      app.canvas.removeEventListener('contextmenu', onContextMenu);
+      for (const [type, fn] of listeners) canvas.removeEventListener(type, fn);
+      viewListeners.clear();
       app.destroy(true, { children: true });
+    },
+    get viewIsDefault() {
+      return camera.isDefault;
+    },
+    get viewVersion() {
+      return viewVersion;
+    },
+    resetView() {
+      camera.reset();
+      camera.setViewport(viewportOf(app));
+      applyCamera();
+    },
+    revealFixture(id, area) {
+      const f = game.fixture(id);
+      if (!f) return;
+      const fp = footprint(FIXTURES[f.kind], f);
+      // 以地板最前角為準：這一點露出來，整個設施圖就都在抽屜外
+      const front = gridToScreen(fp.origin.x + fp.spanX, fp.origin.y + fp.spanY);
+      camera.reveal(front, area);
+      applyCamera();
+    },
+    gridToClient(p) {
+      const rect = canvas.getBoundingClientRect();
+      const s = camera.toScreen(gridToScreen(p.x, p.y));
+      return { x: rect.left + s.x, y: rect.top + s.y };
+    },
+    subscribeView(listener) {
+      viewListeners.add(listener);
+      return () => viewListeners.delete(listener);
     },
   };
 }
@@ -247,14 +361,6 @@ function drawDispatchMarkers(g: Graphics, game: Game): void {
     g.roundRect(top.x - 2, y - 8, 4, 10, 2).fill(0xffffff);
     g.circle(top.x, y + 6, 2.2).fill(0xffffff);
   }
-}
-
-/** 讓整個店面（含牆）放得進畫面、最大不超過 1 的縮放 */
-function fitZoom(width: number, height: number): number {
-  const storeWidth = ((STORE_WIDTH + STORE_DEPTH) * TILE_WIDTH) / 2;
-  const storeHeight = ((STORE_WIDTH + STORE_DEPTH) * TILE_HEIGHT) / 2 + WALL_HEIGHT;
-  // 預留 HUD 與工具列的空間
-  return Math.min(1, (width - 32) / storeWidth, (height - 200) / storeHeight);
 }
 
 function drawFloor(): Graphics {

@@ -1,6 +1,7 @@
 import type { FixtureKind } from '../sim/catalog/fixtures';
 import type { CommandError, DispatchTarget, Game } from '../sim/game';
 import { rotateClockwise } from '../sim/store/geometry';
+import { STORE_DEPTH, STORE_WIDTH } from '../sim/store/layout';
 import type { GridPoint } from '../sim/store/layout';
 import type { Interaction } from './interaction';
 import { ERROR_MESSAGES } from './messages';
@@ -12,6 +13,12 @@ export interface Feedback {
 
 /** 把店長的輸入（點擊、按鍵、按鈕）轉成 Game commands */
 export class Controller {
+  /**
+   * 觸控模式：放置與移動設施時，點地板只移動預覽，要 confirmPlacement() 才真的放下。
+   * 由介面依指標類型（pointer: coarse）設定。
+   */
+  confirmPlacementMode = false;
+
   constructor(
     readonly game: Game,
     readonly interaction: Interaction,
@@ -30,12 +37,35 @@ export class Controller {
     this.interaction.update({ hover: cell });
   }
 
+  /** 選取設施；null 表示取消選取 */
+  select(id: string | null): void {
+    if (this.interaction.state.selectedId === id) return;
+    this.interaction.update({ selectedId: id, message: null });
+  }
+
   click(cell: GridPoint): void {
     const { tool } = this.interaction.state;
     if (tool.mode === 'select') {
       this.interaction.update({ selectedId: this.game.fixtureAt(cell)?.id ?? null, message: null });
       return;
     }
+    if (this.confirmPlacementMode) {
+      this.interaction.update({ hover: cell, message: null });
+      return;
+    }
+    this.place(cell);
+  }
+
+  /** 觸控模式：在目前預覽的位置放下（或移到）設施 */
+  confirmPlacement(): void {
+    const { tool, hover } = this.interaction.state;
+    if (tool.mode !== 'place' || !hover) return;
+    this.place(hover);
+  }
+
+  private place(cell: GridPoint): void {
+    const { tool } = this.interaction.state;
+    if (tool.mode !== 'place') return;
     const placement = { origin: cell, facing: tool.facing };
     const result = tool.movingId
       ? this.game.moveFixture(tool.movingId, placement)
@@ -50,7 +80,13 @@ export class Controller {
   }
 
   startPlacing(kind: FixtureKind): void {
-    this.interaction.update({ tool: { mode: 'place', kind, facing: 'south' }, selectedId: null, message: null });
+    this.interaction.update({
+      tool: { mode: 'place', kind, facing: 'south' },
+      selectedId: null,
+      message: null,
+      // 觸控沒有 hover：預覽先出現在店面中央，玩家再點地板移動它
+      ...(this.confirmPlacementMode && { hover: { x: Math.floor(STORE_WIDTH / 2), y: Math.floor(STORE_DEPTH / 2) } }),
+    });
   }
 
   startMoving(id: string): void {
@@ -59,6 +95,7 @@ export class Controller {
     this.interaction.update({
       tool: { mode: 'place', kind: fixture.kind, facing: fixture.facing, movingId: id },
       message: null,
+      ...(this.confirmPlacementMode && { hover: fixture.origin }),
     });
   }
 

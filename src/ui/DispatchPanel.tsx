@@ -7,7 +7,16 @@ import type { Fixture } from '../sim/store/store-layout';
 import type { Controller } from './controller';
 
 /** 營業中選取陳列櫃或收銀台時：派工（優先處理）與取消 */
-export function DispatchPanel({ controller, fixture }: { controller: Controller; fixture: Fixture }) {
+export function DispatchPanel({
+  controller,
+  fixture,
+  showName = true,
+}: {
+  controller: Controller;
+  fixture: Fixture;
+  /** 抽屜標題已有設施名稱時不再重複 */
+  showName?: boolean;
+}) {
   const { game } = controller;
   const def = FIXTURES[fixture.kind];
 
@@ -23,7 +32,7 @@ export function DispatchPanel({ controller, fixture }: { controller: Controller;
   return (
     <div className="panel dispatch-panel">
       <strong>
-        {def.name}
+        {showName && def.name}
         <small className="dispatch-count">
           派工 {game.dispatches.length}/{MAX_DISPATCHES}
         </small>
