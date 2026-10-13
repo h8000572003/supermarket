@@ -1,19 +1,24 @@
 import { describe, expect, it } from 'vitest';
-import { itemsToDraw, slotLevel } from './stock-visuals';
+import { goodsPerLevel, slotLevel, tileStock } from './stock-visuals';
 
 describe('陳列庫存的畫面', () => {
-  it('依陳列庫存判斷空、偏低（低於補貨門檻）、有貨、滿', () => {
+  it('依陳列庫存判斷格位空、偏低（低於補貨門檻）、有貨、滿', () => {
     expect(slotLevel(0, 12)).toBe('empty');
     expect(slotLevel(3, 12)).toBe('low');
     expect(slotLevel(6, 12)).toBe('ok');
     expect(slotLevel(12, 12)).toBe('full');
   });
 
-  it('空的不畫、有貨至少畫 1 件、只有滿才畫滿一排', () => {
-    expect(itemsToDraw(0, 10)).toBe(0);
-    expect(itemsToDraw(1, 10)).toBe(1);
-    const full = itemsToDraw(10, 10);
-    expect(itemsToDraw(9, 10)).toBeLessThan(full);
-    expect(itemsToDraw(5, 10)).toBeGreaterThan(itemsToDraw(1, 10));
+  it('一格陳列櫃全空才算空、全滿才算滿，其餘為有貨', () => {
+    expect(tileStock(['empty', 'empty'])).toBe('empty');
+    expect(tileStock(['full', 'full'])).toBe('full');
+    expect(tileStock(['empty', 'full'])).toBe('stocked');
+    expect(tileStock(['low', 'ok'])).toBe('stocked');
+  });
+
+  it('空的不畫商品，有貨畫一半，滿的畫滿', () => {
+    expect(goodsPerLevel('empty')).toBe(0);
+    expect(goodsPerLevel('stocked')).toBeGreaterThan(0);
+    expect(goodsPerLevel('stocked')).toBeLessThan(goodsPerLevel('full'));
   });
 });

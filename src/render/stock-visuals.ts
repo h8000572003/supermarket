@@ -1,6 +1,4 @@
 import { Graphics } from 'pixi.js';
-import { PRODUCTS, productById } from '../sim/catalog/products';
-import type { CategoryId } from '../sim/catalog/products';
 import { FIXTURES } from '../sim/catalog/fixtures';
 import { RESTOCK_THRESHOLD } from '../sim/agents/restock';
 import type { Fixture } from '../sim/store/store-layout';
@@ -13,21 +11,16 @@ import { TILE_HEIGHT, gridToScreen } from './iso';
 import type { ScreenPoint } from './iso';
 
 /**
- * 陳列庫存的畫面：架上依陳列庫存畫出商品，空或低於補貨門檻時在設施上方浮出提示。
- * 只讀取 game 狀態，與家具圖（fixture-sprites）分開，換素材時兩邊獨立調整。
+ * 陳列庫存的畫面：每格陳列櫃依庫存分成空、有貨、滿三種樣子，架上畫通用商品（不分類別）；
+ * 個別格位空或低於補貨門檻時，在設施上方浮出提示。
+ * 只讀取 game 狀態，與家具圖（fixture-sprites）分開；之後若改用美術圖，只需替換商品的畫法。
  */
 
-/** 商品類別的顏色 */
-const CATEGORY_COLOR: Record<CategoryId, number> = {
-  drink: 0x3d9be0,
-  fresh: 0x5cb85c,
-  snack: 0xf0a030,
-  noodle: 0xe0554a,
-  daily: 0xb9a7e8,
-};
+/** 滿的時候每層畫幾件商品；有貨時畫一半 */
+const ITEMS_PER_LEVEL = 4;
 
-/** 一個格位最多畫幾件商品（陳列庫存依比例換算） */
-const ITEMS_PER_SLOT = 4;
+/** 通用商品的配色，依位置輪替 */
+const GOODS_COLORS = [0xd9534f, 0xf0ad4e, 0x5bc0de, 0x8e7cc3, 0x5cb85c, 0xe8e2d0];
 
 /**
  * 每種陳列櫃的兩層（一格設施放兩個格位）：商品底部離地的高度、商品高度、畫在離正面多深的平面。
@@ -84,19 +77,18 @@ export function slotLevel(qty: number, capacity: number): SlotLevel {
   return 'ok';
 }
 
-/** 依陳列庫存換算要畫幾件：有貨至少 1 件，滿才畫滿 */
-export function itemsToDraw(qty: number, capacity: number): number {
-  if (qty <= 0) return 0;
-  if (qty >= capacity) return ITEMS_PER_SLOT;
-  return Math.min(ITEMS_PER_SLOT - 1, Math.max(1, Math.round((qty / capacity) * ITEMS_PER_SLOT)));
+export type TileStock = 'empty' | 'stocked' | 'full';
+
+/** 一格陳列櫃的樣子：所有已指定的格位都空才算空、都滿才算滿，其餘為有貨 */
+export function tileStock(levels: readonly SlotLevel[]): TileStock {
+  if (levels.every((l) => l === 'empty')) return 'empty';
+  if (levels.every((l) => l === 'full')) return 'full';
+  return 'stocked';
 }
 
-/** 同類別不同商品略有深淺，方便分辨 */
-function productColor(productId: string): number {
-  const product = productById(productId);
-  if (!product) return 0x999999;
-  const index = PRODUCTS.filter((p) => p.category === product.category).indexOf(product);
-  return shade(CATEGORY_COLOR[product.category], 1 - (index % 3) * 0.14);
+/** 每層要畫幾件 */
+export function goodsPerLevel(stock: TileStock): number {
+  return stock === 'empty' ? 0 : stock === 'full' ? ITEMS_PER_LEVEL : ITEMS_PER_LEVEL / 2;
 }
 
 function shade(color: number, factor: number): number {
@@ -118,8 +110,8 @@ function slotsOnTile(fixture: Fixture, tile: GridPoint): number[] {
 }
 
 /**
- * 一格陳列櫃上的商品，回傳的 Graphics 由呼叫端放進可排序的容器（zIndex 緊接在家具圖之後）。
- * 沒有東西可畫時回傳 null。
+ * 一格陳列櫃上的商品：兩層一起依這格的樣子（空／有貨／滿）畫。
+ * 回傳的 Graphics 由呼叫端放進可排序的容器（zIndex 緊接在家具圖之後）；沒有東西可畫時回傳 null。
  */
 export function createStockItems(game: Game, fixture: Fixture, tile: GridPoint): Graphics | null {
   if (fixture.kind !== 'shelf' && fixture.kind !== 'fridge') return null;
@@ -127,8 +119,13 @@ export function createStockItems(game: Game, fixture: Fixture, tile: GridPoint):
   if (!look.visibleFromBack && !FACES_VIEWER[fixture.facing]) return null;
   const def = FIXTURES[fixture.kind];
   const slots = game.slots(fixture.id);
+  const levels = slotsOnTile(fixture, tile)
+    .map((i) => slots[i])
+    .filter((s) => s?.productId)
+    .map((s) => slotLevel(totalQty(s!.batches), def.slotCapacity));
+  const count = levels.length === 0 ? 0 : goodsPerLevel(tileStock(levels));
+  if (count === 0) return null;
   const g = new Graphics();
-  let drawn = false;
 
   const [a, b] = frontEdge(tile, fixture.facing);
   const inward = INWARD[fixture.facing];
@@ -144,17 +141,11 @@ export function createStockItems(game: Game, fixture: Fixture, tile: GridPoint):
     return [p.x, p.y - z];
   };
 
-  slotsOnTile(fixture, tile).forEach((slotIndex, level) => {
-    const slot = slots[slotIndex];
-    if (!slot?.productId) return;
-    const count = itemsToDraw(totalQty(slot.batches), def.slotCapacity);
-    if (count === 0) return;
-    drawn = true;
-    const color = productColor(slot.productId);
-    const z0 = look.levels[level] ?? 0;
+  look.levels.forEach((z0, level) => {
     const z1 = z0 + look.itemHeight;
-    const width = (1 - 2 * look.margin) / ITEMS_PER_SLOT;
+    const width = (1 - 2 * look.margin) / ITEMS_PER_LEVEL;
     for (let i = 0; i < count; i++) {
+      const color = GOODS_COLORS[(i + level * 2 + tile.x + tile.y) % GOODS_COLORS.length] as number;
       const u0 = look.margin + i * width + width * 0.06;
       const u1 = look.margin + (i + 1) * width - width * 0.06;
       // 正面
@@ -169,14 +160,14 @@ export function createStockItems(game: Game, fixture: Fixture, tile: GridPoint):
     }
   });
 
-  if (fixture.kind === 'fridge' && drawn) {
+  if (fixture.kind === 'fridge') {
     // 玻璃門的反光，讓商品看起來在門後
     g.poly([...point(0.12, 0, 22), ...point(0.88, 0, 22), ...point(0.88, 0, 82), ...point(0.12, 0, 82)]).fill({
       color: 0xbfe6ff,
       alpha: 0.12,
     });
   }
-  return drawn ? g : null;
+  return g;
 }
 
 /** 提示浮在設施上方的高度 */
