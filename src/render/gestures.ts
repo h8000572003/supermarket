@@ -44,8 +44,6 @@ export class GestureTracker {
       this.start = { x: e.x, y: e.y };
       this.startType = e.pointerType;
       this.consumed = false;
-      // 觸控沒有 hover：按下時就讓預覽跟到手指的位置
-      if (e.pointerType !== 'mouse') this.on.hover({ x: e.x, y: e.y });
     } else {
       this.consumed = true;
     }
@@ -97,7 +95,8 @@ export class GestureTracker {
     if (this.pointers.size === 0) this.start = null;
   }
 
-  leave(): void {
-    if (this.pointers.size === 0) this.on.hover(null);
+  /** 只有滑鼠離開畫布才清掉 hover；觸控在手指放開後也會觸發 pointerleave */
+  leave(e: Pick<PointerSample, 'pointerType'>): void {
+    if (e.pointerType === 'mouse' && this.pointers.size === 0) this.on.hover(null);
   }
 }

@@ -68,6 +68,8 @@ export interface StoreScene {
   destroy(): void;
   /** 鏡頭是否在預設位置（沒有縮放或平移過） */
   readonly viewIsDefault: boolean;
+  /** 鏡頭每次改變就遞增；供介面元件跟著重新定位 */
+  readonly viewVersion: number;
   resetView(): void;
   /** 平移鏡頭，讓設施落在畫面的指定區域（client 座標）內 */
   revealFixture(id: string, area: { top: number; bottom: number; left: number; right: number }): void;
@@ -107,7 +109,9 @@ export async function createStoreScene(host: HTMLElement, controller: Controller
 
   const camera = new Camera(viewportOf(app), STORE_BOUNDS);
   const viewListeners = new Set<() => void>();
+  let viewVersion = 0;
   const applyCamera = () => {
+    viewVersion++;
     world.scale.set(camera.scale);
     const pos = camera.position;
     world.position.set(pos.x, pos.y);
@@ -165,7 +169,7 @@ export async function createStoreScene(host: HTMLElement, controller: Controller
   const onPointerMove = (e: PointerEvent) => gestures.move(sample(e));
   const onPointerUp = (e: PointerEvent) => gestures.up(sample(e));
   const onPointerCancel = (e: PointerEvent) => gestures.cancel(sample(e));
-  const onPointerLeave = () => gestures.leave();
+  const onPointerLeave = (e: PointerEvent) => gestures.leave(e);
   const onWheel = (e: WheelEvent) => {
     e.preventDefault();
     const rect = canvas.getBoundingClientRect();
@@ -178,7 +182,7 @@ export async function createStoreScene(host: HTMLElement, controller: Controller
     ['pointermove', onPointerMove as EventListener],
     ['pointerup', onPointerUp as EventListener],
     ['pointercancel', onPointerCancel as EventListener],
-    ['pointerleave', onPointerLeave],
+    ['pointerleave', onPointerLeave as EventListener],
     ['wheel', onWheel as EventListener, { passive: false }],
     ['contextmenu', onContextMenu as EventListener],
   ];
@@ -240,6 +244,9 @@ export async function createStoreScene(host: HTMLElement, controller: Controller
     },
     get viewIsDefault() {
       return camera.isDefault;
+    },
+    get viewVersion() {
+      return viewVersion;
     },
     resetView() {
       camera.reset();

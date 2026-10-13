@@ -1099,3 +1099,32 @@ button {
     right: calc(var(--safe-right) + 156px);
   }
 }
+
+/* ── 觸控放置：跟在預覽旁的確認按鈕 ── */
+.placement-bar {
+  position: fixed;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  border-radius: var(--radius-lg);
+  background: var(--surface-solid);
+  box-shadow: var(--shadow);
+}
+
+.placement-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.placement-buttons button {
+  min-width: var(--touch);
+  min-height: var(--touch);
+}
+
+.placement-error {
+  color: var(--negative);
+  font-size: var(--font-sm);
+}

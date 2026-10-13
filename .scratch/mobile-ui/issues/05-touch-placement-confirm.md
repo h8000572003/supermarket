@@ -6,11 +6,11 @@
 
 **Blocked by:** 02, 04
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] controller 測試：觸控模式下 `click` 不會放置；`confirmPlacement` 在可放時放置並扣款，不可放時拒絕
-- [ ] 移動既有設施也走同樣流程，取消時設施回到原位
-- [ ] 平移或縮放時浮動按鈕會跟著預覽格移動
-- [ ] 滑鼠模式下左鍵仍直接放置（既有測試通過）
-- [ ] 三種尺寸（iPhone 13 直向、iPhone 13 橫向、1440×900 桌機）的 Playwright 截圖符合預期
-- [ ] `npm test`、`npm run lint`、`npm run build` 通過
+- [x] controller 測試：觸控模式下 `click` 不會放置；`confirmPlacement` 在可放時放置並扣款，不可放時拒絕
+- [x] 移動既有設施也走同樣流程，取消時設施回到原位
+- [x] 平移或縮放時浮動按鈕會跟著預覽格移動
+- [x] 滑鼠模式下左鍵仍直接放置（既有測試通過）
+- [x] 三種尺寸（iPhone 13 直向、iPhone 13 橫向、1440×900 桌機）的 Playwright 截圖符合預期
+- [x] `npm test`、`npm run lint`、`npm run build` 通過

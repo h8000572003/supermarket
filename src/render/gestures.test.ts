@@ -67,12 +67,21 @@ describe('手勢判定', () => {
     expect(log).toEqual(['secondary']);
   });
 
-  it('滑鼠沒按鍵移動：更新 hover；觸控按下時也更新 hover', () => {
+  it('滑鼠沒按鍵移動：更新 hover；觸控按下或拖曳不更新（預覽不會跟著平移的手指跑）', () => {
     const { g, log } = setup();
     g.move(mouse(5, 6));
     expect(log).toEqual(['hover 5,6']);
     g.down(touch(3, 7, 8));
-    expect(log).toContain('hover 7,8');
+    g.move(touch(3, 60, 80));
+    expect(log).toEqual(['hover 5,6']);
+  });
+
+  it('觸控放開後的 pointerleave 不清掉 hover；滑鼠離開才清', () => {
+    const { g, log } = setup();
+    g.leave({ pointerType: 'touch' });
+    expect(log).toEqual([]);
+    g.leave({ pointerType: 'mouse' });
+    expect(log).toEqual(['hover null']);
   });
 
   it('取消（pointercancel）：這次手勢不算點擊', () => {

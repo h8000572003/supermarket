@@ -10,7 +10,8 @@ import { Hud } from './ui/Hud';
 import { IncidentDialog } from './ui/IncidentDialog';
 import { MilestonesPanel } from './ui/MilestonesPanel';
 import { StockPanel } from './ui/StockPanel';
-import { useNarrow } from './ui/media';
+import { useNarrow, usePointerCoarse } from './ui/media';
+import { PlacementBar } from './ui/PlacementBar';
 import { formatMoney } from './ui/messages';
 import { productById } from './sim/catalog/products';
 
@@ -19,6 +20,11 @@ export function App({ controller, sounds }: { controller: Controller; sounds: So
   const [panel, setPanel] = useState<'stock' | 'milestones' | null>(null);
   const [scene, setScene] = useState<StoreScene | null>(null);
   const narrow = useNarrow();
+  const coarse = usePointerCoarse();
+  // 觸控裝置：放置設施改為「預覽、確認」
+  useEffect(() => {
+    controller.confirmPlacementMode = coarse;
+  }, [controller, coarse]);
   const toggle = (p: 'stock' | 'milestones') => setPanel((cur) => (cur === p ? null : p));
 
   useEffect(() => {
@@ -90,6 +96,7 @@ export function App({ controller, sounds }: { controller: Controller; sounds: So
       />
       <BuildToolbar controller={controller} onOpenStock={() => toggle('stock')} />
       {narrow && <FixtureSheet controller={controller} scene={scene} />}
+      {coarse && scene && <PlacementBar controller={controller} scene={scene} />}
       {panel === 'stock' && <StockPanel controller={controller} onClose={() => setPanel(null)} />}
       {panel === 'milestones' && <MilestonesPanel game={controller.game} onClose={() => setPanel(null)} />}
       <IncidentDialog controller={controller} />

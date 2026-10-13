@@ -75,7 +75,7 @@ function CompactToolbar({ controller, onOpenStock }: ToolbarProps) {
   let hint: string;
   if (!prep) hint = game.phase === 'open' ? '點格位或收銀台可派工 · 擺設請在準備階段' : '擺設與進貨請在準備階段進行';
   else if (game.day === 1 && game.fixtures.length === 0 && tool.mode === 'select') hint = '先放設施、指定商品、進貨、雇店員，再按「開店」';
-  else if (tool.mode === 'place') hint = coarse ? '點地板放置' : '左鍵放置 · R 旋轉 · 右鍵 / Esc 取消';
+  else if (tool.mode === 'place') hint = coarse ? '點地板移動預覽，再按 ✓ 放置' : '左鍵放置 · R 旋轉 · 右鍵 / Esc 取消';
   else hint = '點設施以旋轉、移動或出售';
 
   return (
@@ -210,7 +210,7 @@ function WideToolbar({ controller }: ToolbarProps) {
           ? '先放冷藏櫃、貨架與收銀台，指定格位商品、進貨、雇店員，再按「開店」'
           : tool.mode === 'place'
             ? coarse
-              ? '點地板放置'
+              ? '點地板移動預覽，再按 ✓ 放置'
               : '左鍵放置 · R 旋轉 · 右鍵 / Esc 取消'
             : '點選設施以旋轉、移動或出售'}
       </div>
