@@ -12,6 +12,7 @@ import { PersonSprite, STAFF_LOOK, customerLook, loadAgentTextures } from './age
 import type { PersonLook } from './agent-sprites';
 import { createFixtureSprites, loadFixtureTextures } from './fixture-sprites';
 import { createStockItems, drawStockAlerts } from './stock-visuals';
+import { currentStockVariant, drawBars } from './stock-variants.prototype';
 import type { FixtureStyle } from './fixture-sprites';
 import { TILE_HEIGHT, TILE_WIDTH, gridToScreen, screenToGrid, tileDiamond } from './iso';
 
@@ -105,12 +106,15 @@ export async function createStoreScene(host: HTMLElement, controller: Controller
   const redraw = () => {
     drawObjects(objects, game, controller);
     drawOverlay(overlay, game, controller);
-    drawStockAlerts(stockAlerts, game);
+    // PROTOTYPE：依 ?variant= 切換提示的畫法
+    if (currentStockVariant() === 'C') drawBars(stockAlerts, game);
+    else drawStockAlerts(stockAlerts, game);
     drawDispatchMarkers(markers, game);
   };
   redraw();
   const unsubscribeGame = game.subscribe(redraw);
   const unsubscribeInteraction = interaction.subscribe(redraw);
+  window.addEventListener('prototype-variant-change', redraw);
 
   // 人物位置每幀更新：在模擬的上一步與這一步之間內插
   const agentSprites = new Map<string, PersonSprite>();
@@ -151,6 +155,7 @@ export async function createStoreScene(host: HTMLElement, controller: Controller
     destroy() {
       unsubscribeGame();
       unsubscribeInteraction();
+      window.removeEventListener('prototype-variant-change', redraw);
       app.canvas.removeEventListener('wheel', onWheel);
       app.canvas.removeEventListener('contextmenu', onContextMenu);
       app.destroy(true, { children: true });
@@ -181,7 +186,7 @@ function drawObjects(objects: Container, game: Game, { interaction }: Controller
     if (f.id === movingId) continue;
     // 架上的商品緊接在那一格家具圖之後畫，人物仍可擋在前面
     for (const tile of footprintTiles(footprint(FIXTURES[f.kind], f))) {
-      const items = createStockItems(game, f, tile);
+      const items = createStockItems(game, f, tile, currentStockVariant() !== 'A');
       if (!items) continue;
       items.label = FIXTURE_LABEL;
       items.zIndex = (tile.x + tile.y) * 10 + 1;

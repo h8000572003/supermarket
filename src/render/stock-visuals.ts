@@ -121,7 +121,7 @@ function slotsOnTile(fixture: Fixture, tile: GridPoint): number[] {
  * 一格陳列櫃上的商品，回傳的 Graphics 由呼叫端放進可排序的容器（zIndex 緊接在家具圖之後）。
  * 沒有東西可畫時回傳 null。
  */
-export function createStockItems(game: Game, fixture: Fixture, tile: GridPoint): Graphics | null {
+export function createStockItems(game: Game, fixture: Fixture, tile: GridPoint, generic = false): Graphics | null {
   if (fixture.kind !== 'shelf' && fixture.kind !== 'fridge') return null;
   const look = LEVELS[fixture.kind];
   if (!look.visibleFromBack && !FACES_VIEWER[fixture.facing]) return null;
@@ -144,17 +144,23 @@ export function createStockItems(game: Game, fixture: Fixture, tile: GridPoint):
     return [p.x, p.y - z];
   };
 
-  slotsOnTile(fixture, tile).forEach((slotIndex, level) => {
+  const tileSlots = slotsOnTile(fixture, tile);
+  // PROTOTYPE：通用模式下整格只分空／有貨／滿三種狀態，兩層一起畫、不分商品
+  const tileState = genericState(tileSlots.map((i) => slots[i]).filter((s) => s?.productId).map((s) => slotLevel(totalQty(s!.batches), def.slotCapacity)));
+  tileSlots.forEach((slotIndex, level) => {
     const slot = slots[slotIndex];
-    if (!slot?.productId) return;
-    const count = itemsToDraw(totalQty(slot.batches), def.slotCapacity);
+    if (!generic && !slot?.productId) return;
+    const count = generic
+      ? tileState === 'empty' ? 0 : tileState === 'full' ? ITEMS_PER_SLOT : Math.ceil(ITEMS_PER_SLOT / 2)
+      : itemsToDraw(totalQty(slot!.batches), def.slotCapacity);
     if (count === 0) return;
     drawn = true;
-    const color = productColor(slot.productId);
+    const fixed = generic ? null : productColor(slot!.productId!);
     const z0 = look.levels[level] ?? 0;
     const z1 = z0 + look.itemHeight;
     const width = (1 - 2 * look.margin) / ITEMS_PER_SLOT;
     for (let i = 0; i < count; i++) {
+      const color = fixed ?? GENERIC_COLORS[(i + level * 2 + tile.x + tile.y) % GENERIC_COLORS.length]!;
       const u0 = look.margin + i * width + width * 0.06;
       const u1 = look.margin + (i + 1) * width - width * 0.06;
       // 正面
@@ -177,6 +183,16 @@ export function createStockItems(game: Game, fixture: Fixture, tile: GridPoint):
     });
   }
   return drawn ? g : null;
+}
+
+/** PROTOTYPE：通用商品的配色 */
+const GENERIC_COLORS = [0xd9534f, 0xf0ad4e, 0x5bc0de, 0x8e7cc3, 0x5cb85c, 0xe8e2d0];
+
+/** PROTOTYPE：整格的狀態：全空才算空、全滿才算滿，其餘為有貨 */
+function genericState(levels: SlotLevel[]): 'empty' | 'stocked' | 'full' {
+  if (levels.length === 0 || levels.every((l) => l === 'empty')) return 'empty';
+  if (levels.every((l) => l === 'full')) return 'full';
+  return 'stocked';
 }
 
 /** 提示浮在設施上方的高度 */

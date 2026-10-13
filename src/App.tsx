@@ -9,6 +9,8 @@ import { Hud } from './ui/Hud';
 import { IncidentDialog } from './ui/IncidentDialog';
 import { MilestonesPanel } from './ui/MilestonesPanel';
 import { StockPanel } from './ui/StockPanel';
+import { PrototypeSwitcher } from './ui/PrototypeSwitcher';
+import { STOCK_VARIANTS, STOCK_VARIANT_NAMES } from './render/stock-variants.prototype';
 import { formatMoney } from './ui/messages';
 import { productById } from './sim/catalog/products';
 
@@ -78,6 +80,7 @@ export function App({ controller, sounds }: { controller: Controller; sounds: So
         onOpenMilestones={() => toggle('milestones')}
       />
       <BuildToolbar controller={controller} />
+      <PrototypeSwitcher variants={STOCK_VARIANTS} names={STOCK_VARIANT_NAMES} />
       {panel === 'stock' && <StockPanel controller={controller} onClose={() => setPanel(null)} />}
       {panel === 'milestones' && <MilestonesPanel game={controller.game} onClose={() => setPanel(null)} />}
       <IncidentDialog controller={controller} />
