@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { SoundBoard } from './audio/sounds';
 import { createStoreScene } from './render/scene';
 import type { StoreScene } from './render/scene';
@@ -15,6 +15,7 @@ import { productById } from './sim/catalog/products';
 export function App({ controller, sounds }: { controller: Controller; sounds: SoundBoard }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [panel, setPanel] = useState<'stock' | 'milestones' | null>(null);
+  const [scene, setScene] = useState<StoreScene | null>(null);
   const toggle = (p: 'stock' | 'milestones') => setPanel((cur) => (cur === p ? null : p));
 
   useEffect(() => {
@@ -25,11 +26,16 @@ export function App({ controller, sounds }: { controller: Controller; sounds: So
     // StrictMode 會先卸載再掛載：init 為非同步，需處理卸載早於 init 完成的情況
     void createStoreScene(host, controller).then((s) => {
       if (disposed) s.destroy();
-      else scene = s;
+      else {
+        scene = s;
+        setScene(s);
+        if (import.meta.env.DEV) Object.assign(window, { __scene: s });
+      }
     });
     return () => {
       disposed = true;
       scene?.destroy();
+      setScene(null);
     };
   }, [controller]);
 
@@ -71,6 +77,7 @@ export function App({ controller, sounds }: { controller: Controller; sounds: So
   return (
     <>
       <div ref={hostRef} className="stage" />
+      {scene && <ViewReset scene={scene} />}
       <Hud
         controller={controller}
         sounds={sounds}
@@ -83,5 +90,19 @@ export function App({ controller, sounds }: { controller: Controller; sounds: So
       <IncidentDialog controller={controller} />
       <DailyReportPanel game={controller.game} />
     </>
+  );
+}
+
+/** 縮放或平移過鏡頭時，出現「重設視角」 */
+function ViewReset({ scene }: { scene: StoreScene }) {
+  const isDefault = useSyncExternalStore(
+    (l) => scene.subscribeView(l),
+    () => scene.viewIsDefault,
+  );
+  if (isDefault) return null;
+  return (
+    <button className="view-reset" onClick={() => scene.resetView()} aria-label="重設視角" title="重設視角">
+      ⌖
+    </button>
   );
 }

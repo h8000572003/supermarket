@@ -1,4 +1,5 @@
 import { Graphics } from 'pixi.js';
+import type { FixtureKind } from '../sim/catalog/fixtures';
 import type { Facing } from '../sim/store/geometry';
 import type { GridPoint } from '../sim/store/layout';
 import { gridToScreen } from './iso';
@@ -188,3 +189,10 @@ export function drawRegisterTile(tile: GridPoint, facing: Facing): Graphics {
   });
   return g;
 }
+
+/** 各設施圖往上突出的高度（場景座標）；點擊判定用 */
+export const ART_HEIGHT: Record<FixtureKind, number> = {
+  shelf: SHELF.height,
+  fridge: FRIDGE.height,
+  register: REGISTER.height + 20,
+};

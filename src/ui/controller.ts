@@ -30,6 +30,12 @@ export class Controller {
     this.interaction.update({ hover: cell });
   }
 
+  /** 選取設施；null 表示取消選取 */
+  select(id: string | null): void {
+    if (this.interaction.state.selectedId === id) return;
+    this.interaction.update({ selectedId: id, message: null });
+  }
+
   click(cell: GridPoint): void {
     const { tool } = this.interaction.state;
     if (tool.mode === 'select') {
