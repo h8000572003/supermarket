@@ -3,7 +3,7 @@ import { FIXTURES } from '../sim/catalog/fixtures';
 import type { FixtureKind } from '../sim/catalog/fixtures';
 import type { Walker } from '../sim/agents/walker';
 import type { Game } from '../sim/game';
-import { accessTiles, footprint, footprintTiles } from '../sim/store/geometry';
+import { accessTiles, footprint, footprintTiles, slotAccessTile, staffAccessTiles } from '../sim/store/geometry';
 import type { Placement } from '../sim/store/geometry';
 import { BACKROOM_DOOR, ENTRANCE, STORE_DEPTH, STORE_WIDTH, isInsideStore } from '../sim/store/layout';
 import type { GridPoint } from '../sim/store/layout';
@@ -27,7 +27,11 @@ const COLORS = {
   access: 0x4f9de0,
   selected: 0xffd86b,
   door: 0x7a5a3c,
+  dispatch: 0xff9a3c,
 };
+
+/** 派工標記在設施上方浮起的高度 */
+const DISPATCH_BADGE_LIFT = TILE_HEIGHT * 2.6;
 
 const WALL_HEIGHT = TILE_HEIGHT * 2.5;
 const DOOR_HEIGHT = TILE_HEIGHT * 1.6;
@@ -54,7 +58,8 @@ export async function createStoreScene(host: HTMLElement, controller: Controller
 
   const overlay = new Graphics();
   const objects = new Container({ sortableChildren: true });
-  world.addChild(drawWalls(), drawFloor(), drawEntrance(), overlay, objects);
+  const markers = new Graphics();
+  world.addChild(drawWalls(), drawFloor(), drawEntrance(), overlay, objects, markers);
 
   // 實際縮放 = 依畫面大小自動貼合的基準 × 玩家以滾輪調整的倍率
   let userZoom = 1;
@@ -98,6 +103,7 @@ export async function createStoreScene(host: HTMLElement, controller: Controller
   const redraw = () => {
     drawObjects(objects, game, controller);
     drawOverlay(overlay, game, controller);
+    drawDispatchMarkers(markers, game);
   };
   redraw();
   const unsubscribeGame = game.subscribe(redraw);
@@ -202,6 +208,30 @@ function drawOverlay(g: Graphics, game: Game, { interaction }: Controller): void
   }
   if (hover && tool.mode === 'select') {
     g.poly(tileDiamond(hover.x, hover.y)).fill({ color: COLORS.hover, alpha: 0.3 }).stroke({ width: 2, color: COLORS.hover });
+  }
+}
+
+/** 派工標記：地板上標出店員要站的格子，設施上方浮著「!」 */
+function drawDispatchMarkers(g: Graphics, game: Game): void {
+  g.clear();
+  for (const d of game.dispatches) {
+    const f = game.fixture(d.kind === 'slot' ? d.fixtureId : d.registerId);
+    if (!f) continue;
+    const def = FIXTURES[f.kind];
+    const stand = d.kind === 'slot' ? slotAccessTile(def, f, d.slotIndex) : staffAccessTiles(def, f)[0];
+    if (!stand) continue;
+    // 標記浮在與站立格相鄰的那一格設施上
+    const tiles = footprintTiles(footprint(def, f));
+    const tile = tiles.find((t) => Math.abs(t.x - stand.x) + Math.abs(t.y - stand.y) === 1) ?? tiles[0];
+    if (!tile) continue;
+    g.poly(tileDiamond(stand.x, stand.y)).fill({ color: COLORS.dispatch, alpha: 0.35 }).stroke({ width: 2, color: COLORS.dispatch });
+    g.poly(tileDiamond(tile.x, tile.y)).stroke({ width: 3, color: COLORS.dispatch });
+    const top = gridToScreen(tile.x + 0.5, tile.y + 0.5);
+    const y = top.y - DISPATCH_BADGE_LIFT;
+    g.moveTo(top.x, y + 16).lineTo(top.x, top.y - TILE_HEIGHT * 0.6).stroke({ width: 2, color: COLORS.dispatch, alpha: 0.8 });
+    g.circle(top.x, y, 13).fill(COLORS.dispatch).stroke({ width: 2, color: 0xffffff });
+    g.roundRect(top.x - 2, y - 8, 4, 10, 2).fill(0xffffff);
+    g.circle(top.x, y + 6, 2.2).fill(0xffffff);
   }
 }
 

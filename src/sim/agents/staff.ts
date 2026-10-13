@@ -31,6 +31,8 @@ export class StaffAgent extends Walker {
   carrying: Batch[] = [];
   /** 收銀中或前往收銀的收銀台 */
   registerId: string | null = null;
+  /** 目前的補貨工作是否來自派工 */
+  onDispatch = false;
   private timer = 0;
 
   constructor(id: string, start: GridPoint) {
@@ -48,6 +50,23 @@ export class StaffAgent extends Walker {
     this.registerId = registerId;
     this.activity = 'to-register';
     this.walkTo(staffTile, world.isWalkable);
+  }
+
+  /** 派工：放下尚未取貨的工作，改去倉庫取貨補滿指定格位 */
+  assignDispatch(task: RestockCandidate, world: StaffWorld, reserved: Set<string>): void {
+    this.dropTask(reserved);
+    this.task = task;
+    this.onDispatch = true;
+    reserved.add(slotKey(task.fixtureId, task.slotIndex));
+    this.activity = 'to-backroom';
+    this.walkTo(world.backroomDoor, world.isWalkable);
+  }
+
+  /** 取消派工：還沒取貨就放下工作；已拿著貨則照常上架 */
+  cancelDispatch(reserved: Set<string>): void {
+    if (!this.onDispatch) return;
+    if (this.carrying.length === 0) this.dropTask(reserved);
+    else this.onDispatch = false;
   }
 
   /** 收銀台沒人排隊時解除收銀，回去補貨 */
@@ -108,6 +127,7 @@ export class StaffAgent extends Walker {
   private dropTask(reserved: Set<string>): void {
     if (this.task) reserved.delete(slotKey(this.task.fixtureId, this.task.slotIndex));
     this.task = null;
+    this.onDispatch = false;
     this.activity = 'idle';
   }
 }
