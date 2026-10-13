@@ -22,7 +22,6 @@ export const ERROR_MESSAGES: Record<CommandError, string> = {
   'below-min-order': '低於最低訂購量',
   'staff-full': '店員人數已達上限',
   'unknown-staff': '找不到這位店員',
-  'not-open-phase': '只能在營業時段操作',
   'dispatch-full': '派工標記已達上限（最多 2 個），請先取消一個',
   'already-dispatched': '這裡已經派工了',
   'not-dispatched': '這裡沒有派工',

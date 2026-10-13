@@ -48,8 +48,8 @@ describe('派工', () => {
 
   it('準備階段派工被拒；營業中可用', () => {
     const { game, slot, registerTarget } = store();
-    expect(game.dispatch(slot(0))).toEqual({ ok: false, error: 'not-open-phase' });
-    expect(game.dispatch(registerTarget)).toEqual({ ok: false, error: 'not-open-phase' });
+    expect(game.dispatch(slot(0))).toEqual({ ok: false, error: 'not-open-hours' });
+    expect(game.dispatch(registerTarget)).toEqual({ ok: false, error: 'not-open-hours' });
     expect(game.dispatches).toEqual([]);
     game.openStore();
     expect(game.dispatch(slot(0)).ok).toBe(true);
@@ -170,8 +170,8 @@ describe('派工', () => {
     expect(game.dispatches).toEqual([]);
     game.startNextDay();
     expect(game.dispatches).toEqual([]);
-    expect(game.dispatch(slot(0))).toEqual({ ok: false, error: 'not-open-phase' });
-    expect(game.cancelDispatch(slot(0))).toEqual({ ok: false, error: 'not-open-phase' });
+    expect(game.dispatch(slot(0))).toEqual({ ok: false, error: 'not-open-hours' });
+    expect(game.cancelDispatch(slot(0))).toEqual({ ok: false, error: 'not-open-hours' });
   });
 });
 

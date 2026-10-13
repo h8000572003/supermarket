@@ -72,8 +72,6 @@ export type CommandError =
   | 'staff-full'
   /** 找不到指定的店員 */
   | 'unknown-staff'
-  /** 只能在營業時段執行 */
-  | 'not-open-phase'
   /** 派工標記已達上限 */
   | 'dispatch-full'
   /** 這個目標已經派工 */
@@ -527,7 +525,8 @@ export class Game {
    * 格位會被補滿（不受補貨門檻限制）；收銀台會有一位店員待命到隊伍清空。完成後標記自動清除。
    */
   dispatch(target: DispatchTarget): Result {
-    if (this._phase !== 'open') return fail('not-open-phase');
+    const phase = phaseError(this._phase, 'open');
+    if (phase) return fail(phase);
     const error = this.checkDispatchTarget(target);
     if (error) return fail(error);
     if (this.isDispatched(target)) return fail('already-dispatched');
@@ -545,7 +544,8 @@ export class Game {
 
   /** 取消派工：店員放下尚未取貨的工作，恢復自動工作 */
   cancelDispatch(target: DispatchTarget): Result {
-    if (this._phase !== 'open') return fail('not-open-phase');
+    const phase = phaseError(this._phase, 'open');
+    if (phase) return fail(phase);
     if (!this.isDispatched(target)) return fail('not-dispatched');
     this._dispatches = this._dispatches.filter((d) => !sameTarget(d, target));
     if (target.kind === 'slot') {
