@@ -3,7 +3,7 @@ import type { Batch } from '../inventory/batch';
 import type { Passable } from '../pathfinding/grid';
 import type { Rng } from '../rng';
 import type { GridPoint } from '../store/layout';
-import { purchaseProbability } from './demand';
+import { checkoutSatisfaction, clampSatisfaction, purchaseProbability } from './demand';
 import { Walker } from './walker';
 
 /** 顧客每步移動的格數 */
@@ -29,7 +29,9 @@ export interface ShelfOffer {
 export interface BasketItem {
   readonly batches: readonly Batch[];
   readonly productId: string;
+  /** 成交價 */
   readonly price: number;
+  readonly suggestedPrice: number;
 }
 
 /** 顧客在營業時段中需要的外部能力，由 Game 提供 */
@@ -130,13 +132,14 @@ export class CustomerAgent extends Walker {
 
   /** 收銀完成 */
   paid(world: CustomerWorld): void {
-    this.satisfaction = clamp(this.shoppingScore() - Math.max(0, this.waitSteps - 30) * 0.5);
+    const items = this.basket.map((b) => ({ salePrice: b.price, suggestedPrice: b.suggestedPrice }));
+    this.satisfaction = checkoutSatisfaction(items, this.shoppingPenalty() + Math.max(0, this.waitSteps - 30) * 0.5);
     this.leave('served', world);
   }
 
-  /** 購物過程的滿意度：缺貨扣最多、嫌貴次之、店裡沒賣扣最少 */
-  private shoppingScore(): number {
-    return 100 - 35 * this.stockoutCategories.length - 15 * this.priceRejects - 10 * this.notCarried;
+  /** 購物過程的扣分：缺貨扣最多、嫌貴次之、店裡沒賣扣最少 */
+  private shoppingPenalty(): number {
+    return 35 * this.stockoutCategories.length + 15 * this.priceRejects + 10 * this.notCarried;
   }
 
   /** 打烊時仍在店內：未結帳的商品退回倉庫 */
@@ -183,7 +186,12 @@ export class CustomerAgent extends Walker {
     }
     const { salePrice, suggestedPrice } = world.pricing(content.productId);
     if (world.rng.chance(purchaseProbability(salePrice, suggestedPrice))) {
-      this.basket.push({ batches: world.takeOne(t.fixtureId, t.slotIndex), productId: content.productId, price: salePrice });
+      this.basket.push({
+        batches: world.takeOne(t.fixtureId, t.slotIndex),
+        productId: content.productId,
+        price: salePrice,
+        suggestedPrice,
+      });
     } else {
       this.priceRejects++;
     }
@@ -199,7 +207,8 @@ export class CustomerAgent extends Walker {
 
   private finishShopping(world: CustomerWorld): void {
     if (this.basket.length === 0) {
-      this.satisfaction = Math.min(40, clamp(this.shoppingScore()));
+      // 空手離開的規則不隨結帳基準調整：以 100 扣分，最高 40
+      this.satisfaction = Math.min(40, clampSatisfaction(100 - this.shoppingPenalty()));
       return this.leave('left-empty', world);
     }
     if (!world.joinQueue(this)) {
@@ -235,5 +244,3 @@ export class CustomerAgent extends Walker {
     this.walkTo(world.entrance, world.isWalkable);
   }
 }
-
-const clamp = (n: number) => Math.min(100, Math.max(0, n));

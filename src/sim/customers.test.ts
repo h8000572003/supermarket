@@ -117,6 +117,15 @@ describe('顧客與收銀', () => {
     expect(game.lastReport!.revenue).toBe(0);
   });
 
+  it('同種子下，全面打 9 折的店平均滿意度高於照建議售價的店', () => {
+    const full = store({ seed: 3 });
+    const discounted = store({ seed: 3, priceFactor: 0.9 });
+    runOpenHours(full.game);
+    runOpenHours(discounted.game);
+    const avg = (g: Game) => g.lastReport!.customers.avgSatisfaction!;
+    expect(avg(discounted.game)).toBeGreaterThan(avg(full.game));
+  });
+
   it('有人排隊時店員會去收銀台', () => {
     const { game } = store();
     game.openStore();
