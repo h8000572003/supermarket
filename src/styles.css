@@ -537,3 +537,43 @@ button {
   line-height: 18px;
   text-align: center;
 }
+
+.incident-modal p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.incident-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.incident-options button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 12px;
+  white-space: normal;
+  text-align: left;
+}
+
+.incident-options button small {
+  opacity: 0.75;
+}
+
+.incident-options button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.report-incidents {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+}

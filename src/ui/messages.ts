@@ -22,6 +22,8 @@ export const ERROR_MESSAGES: Record<CommandError, string> = {
   'below-min-order': '低於最低訂購量',
   'staff-full': '店員人數已達上限',
   'unknown-staff': '找不到這位店員',
+  'no-pending-incident': '目前沒有需要處理的狀況',
+  'invalid-incident-option': '沒有這個選項',
 };
 
 export const formatMoney = (n: number) => `${n < 0 ? '−' : ''}$${Math.abs(n).toLocaleString('zh-TW')}`;

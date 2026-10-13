@@ -13,6 +13,15 @@ import { CLOSE_MINUTE, MAX_STEPS_PER_TICK, MINUTES_PER_STEP, STEPS_PER_DAY, STEP
 import type { Speed } from './clock/clock';
 import { orderTotal } from './economy/purchase-order';
 import type { OrderLine, PurchaseOrder } from './economy/purchase-order';
+import { canAfford, incidentDefinition, scheduleIncidents } from './incidents/incidents';
+import type {
+  IncidentContext,
+  IncidentEffect,
+  IncidentKind,
+  IncidentRecord,
+  PendingIncident,
+  ScheduledIncident,
+} from './incidents/incidents';
 import { isExpired } from './inventory/expiry';
 import { Inventory } from './inventory/inventory';
 import type { Slot } from './inventory/inventory';
@@ -70,7 +79,11 @@ export type CommandError =
   /** 店員人數已達上限 */
   | 'staff-full'
   /** 找不到指定的店員 */
-  | 'unknown-staff';
+  | 'unknown-staff'
+  /** 目前沒有等待選擇的狀況 */
+  | 'no-pending-incident'
+  /** 狀況沒有這個選項 */
+  | 'invalid-incident-option';
 
 export type Result<T = void> = { ok: true; value: T } | { ok: false; error: CommandError };
 
@@ -103,7 +116,11 @@ export type GameEvent =
   | { readonly type: 'sale'; readonly amount: number }
   | { readonly type: 'abandon' }
   | { readonly type: 'day-ended'; readonly bankrupt: boolean }
-  | { readonly type: 'milestone'; readonly id: string };
+  | { readonly type: 'milestone'; readonly id: string }
+  /** 狀況發生，遊戲停下等店長選擇 */
+  | { readonly type: 'incident-started'; readonly kind: IncidentKind }
+  /** 狀況已處理，遊戲繼續 */
+  | { readonly type: 'incident-resolved'; readonly kind: IncidentKind; readonly option: number };
 
 /** 受雇的店員（跨營業日存在） */
 export interface Staff {
@@ -129,6 +146,8 @@ export interface GameOptions {
   customerArrivals?: boolean;
   /** 起始口碑（0–100）；預設 STARTING_REPUTATION */
   startingReputation?: number;
+  /** 起始資金；預設 STARTING_FUNDS。供測試布置情境用 */
+  startingFunds?: number;
 }
 
 /** 模擬核心的唯一入口：commands 改變狀態、唯讀 getter 查詢、subscribe 監聽變化 */
@@ -163,6 +182,11 @@ export class Game {
   private _version = 0;
   private readonly listeners = new Set<() => void>();
   private readonly eventListeners = new Set<(event: GameEvent) => void>();
+  /** 今天還沒發生的狀況（依時刻排序） */
+  private incidentQueue: ScheduledIncident[] = [];
+  private _pendingIncident: { readonly kind: IncidentKind; readonly minute: number } | null = null;
+  /** 前一個營業日發生過的狀況種類（隔天不重複） */
+  private previousIncidentKinds: readonly IncidentKind[] = [];
 
   private readonly customerWorld: CustomerWorld;
   private readonly customerArrivals: boolean;
@@ -171,6 +195,8 @@ export class Game {
     this.rng = Rng.fromSeed(options.seed);
     this.customerArrivals = options.customerArrivals ?? true;
     this._reputation = options.startingReputation ?? STARTING_REPUTATION;
+    this._funds = options.startingFunds ?? STARTING_FUNDS;
+    this.ledger = new DayLedger(1, this._funds);
     this.customerWorld = this.createCustomerWorld();
   }
 
@@ -196,6 +222,7 @@ export class Game {
       pendingOrders: this._pendingOrders,
       rngState: this.rng.state,
       speed: this._speed,
+      previousIncidentKinds: this.previousIncidentKinds,
       ledger: {
         fundsAtStart: this.ledger.fundsAtStart,
         purchases: this.ledger.purchases,
@@ -226,6 +253,7 @@ export class Game {
     game.nextStaffId = s.nextStaffId;
     game._pendingOrders = [...s.pendingOrders];
     game._speed = s.speed;
+    game.previousIncidentKinds = [...s.previousIncidentKinds];
     game.ledger = new DayLedger(s.day, s.ledger.fundsAtStart);
     game.ledger.purchases = s.ledger.purchases;
     game.ledger.fixtures = s.ledger.fixtures;
@@ -306,6 +334,25 @@ export class Game {
   /** 今天到目前為止的帳目（營業中即時顯示用） */
   get todayRevenue(): number {
     return this.ledger.revenue;
+  }
+
+  /** 等待店長選擇的狀況；沒有時為 null。等待中 tick 不推進遊戲時間 */
+  get pendingIncident(): PendingIncident | null {
+    const p = this._pendingIncident;
+    if (!p) return null;
+    const def = incidentDefinition(p.kind);
+    return {
+      kind: p.kind,
+      name: def.name,
+      description: def.description,
+      minute: p.minute,
+      options: def.options.map((o) => ({ ...o, available: canAfford(this._funds, o.cost) })),
+    };
+  }
+
+  /** 今天已處理的狀況 */
+  get todayIncidents(): readonly IncidentRecord[] {
+    return this.ledger.incidents;
   }
 
   /** 已下單、尚未送達的進貨單 */
@@ -494,6 +541,8 @@ export class Game {
     this.reservedSlots.clear();
     this.customers = [];
     this.checkout = new Checkout(this.registerSpots(), (p) => this.layout.isWalkable(p));
+    this._pendingIncident = null;
+    this.incidentQueue = scheduleIncidents(this.rng, this._day, this.previousIncidentKinds, this.incidentContext());
     this.emit({ type: 'store-opened' });
     this.changed();
     return ok(undefined);
@@ -505,14 +554,84 @@ export class Game {
     this.changed();
   }
 
-  /** 由畫面迴圈呼叫：依倍速把現實時間換算成固定步數推進 */
+  /** 選擇等待中狀況的選項：立即支付費用並套用效果，遊戲以原本的速度繼續 */
+  resolveIncident(option: number): Result<IncidentRecord> {
+    const phaseErr = phaseError(this._phase, 'open');
+    if (phaseErr) return fail(phaseErr);
+    const pending = this._pendingIncident;
+    if (!pending) return fail('no-pending-incident');
+    const def = incidentDefinition(pending.kind);
+    const chosen = def.options[option];
+    if (!Number.isInteger(option) || !chosen) return fail('invalid-incident-option');
+    if (!canAfford(this._funds, chosen.cost)) return fail('insufficient-funds');
+    this._funds -= chosen.cost;
+    for (const effect of chosen.effects) this.applyIncidentEffect(effect);
+    const record: IncidentRecord = {
+      kind: pending.kind,
+      name: def.name,
+      minute: pending.minute,
+      option,
+      optionLabel: chosen.label,
+      cost: chosen.cost,
+    };
+    this.ledger.recordIncident(record);
+    this._pendingIncident = null;
+    this.emit({ type: 'incident-resolved', kind: pending.kind, option });
+    this.changed();
+    return ok(record);
+  }
+
+  private applyIncidentEffect(effect: IncidentEffect): void {
+    switch (effect.type) {
+      case 'reputation':
+        this.ledger.incidentReputation += effect.delta;
+        return;
+      case 'send-staff-home':
+        for (let i = 0; i < effect.count; i++) this.sendStaffHome();
+        return;
+    }
+  }
+
+  /** 一位店員提早下班：手上的貨退回倉庫、放下收銀與補貨工作；今天不再回來 */
+  private sendStaffHome(): void {
+    const agent = this.agents.at(-1);
+    if (!agent) return;
+    this.checkout.dismiss(agent);
+    this.inventory.receive(agent.leaveWork(this.reservedSlots));
+    this.agents = this.agents.slice(0, -1);
+  }
+
+  private incidentContext(): IncidentContext {
+    return {
+      day: this._day,
+      funds: this._funds,
+      workingStaff: this._phase === 'open' ? this.agents.length : this._staff.length,
+      registers: this.layout.list().filter((f) => f.kind === 'register').length,
+    };
+  }
+
+  /** 到了排定時刻的狀況發生（前提已不成立的略過）；回傳是否有狀況開始等待選擇 */
+  private startDueIncident(): boolean {
+    while (this.incidentQueue.length > 0 && (this.incidentQueue[0] as ScheduledIncident).minute <= this.minuteOfDay) {
+      const next = this.incidentQueue.shift() as ScheduledIncident;
+      if (!incidentDefinition(next.kind).precondition(this.incidentContext())) continue;
+      this._pendingIncident = next;
+      this.stepRemainderMs = 0;
+      this.emit({ type: 'incident-started', kind: next.kind });
+      this.changed();
+      return true;
+    }
+    return false;
+  }
+
+  /** 由畫面迴圈呼叫：依倍速把現實時間換算成固定步數推進；狀況等待選擇時不推進 */
   tick(realDtMs: number): void {
-    if (this._phase !== 'open' || this._speed === 0) return;
+    if (this._phase !== 'open' || this._speed === 0 || this._pendingIncident) return;
     this.stepRemainderMs += realDtMs * this._speed;
     let steps = Math.min(Math.floor(this.stepRemainderMs / STEP_MS), MAX_STEPS_PER_TICK);
     this.stepRemainderMs = Math.min(this.stepRemainderMs - steps * STEP_MS, STEP_MS);
     const minuteBefore = Math.floor(this.minuteOfDay);
-    while (steps-- > 0 && this._phase === 'open') this.advanceStep();
+    while (steps-- > 0 && this._phase === 'open' && !this._pendingIncident) this.advanceStep();
     if (this._phase === 'open' && Math.floor(this.minuteOfDay) !== minuteBefore) this.changed();
   }
 
@@ -533,6 +652,7 @@ export class Game {
     this.removeDepartedCustomers();
     this._step++;
     if (this._step >= STEPS_PER_DAY) this.closeStore();
+    else this.startDueIncident();
   }
 
   /** 營業時段 → 每日結算：支付固定支出並產生結算 */
@@ -547,9 +667,15 @@ export class Game {
     this.ledger.rent = DAILY_RENT;
     this.ledger.wages = this._staff.length * DAILY_WAGE;
     this._funds -= this.ledger.rent + this.ledger.wages;
+    // 狀況效果最晚在打烊時結束
+    this.incidentQueue = [];
+    this._pendingIncident = null;
 
     const reputationBefore = this._reputation;
-    this._reputation = nextReputation(this._reputation, this.ledger.avgSatisfaction);
+    // 狀況造成的口碑變化與當天的平滑更新一起套用
+    this._reputation = clampReputation(
+      nextReputation(this._reputation, this.ledger.avgSatisfaction) + this.ledger.incidentReputation,
+    );
     this.totalRevenue += this.ledger.revenue;
     this.bestServed = Math.max(this.bestServed, this.ledger.served);
     const milestonesReached = this.checkMilestones();
@@ -585,6 +711,7 @@ export class Game {
   /** 每日結算 → 下一個營業日的準備階段：送達進貨、報廢過期鮮食 */
   startNextDay(): Result {
     if (this._phase !== 'report') return fail('not-report-phase');
+    this.previousIncidentKinds = this.ledger.incidents.map((i) => i.kind);
     this._day++;
     this._phase = 'prep';
     this._step = 0;
@@ -723,6 +850,8 @@ export class Game {
     for (const listener of this.listeners) listener();
   }
 }
+
+const clampReputation = (r: number) => Math.min(100, Math.max(0, r));
 
 function summarizeWaste(batches: readonly { productId: string; qty: number }[]): WasteLine[] {
   const qty = new Map<string, number>();

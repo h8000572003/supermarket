@@ -56,6 +56,15 @@ export class StaffAgent extends Walker {
     this.activity = 'idle';
   }
 
+  /** 提早下班：放下補貨與收銀工作，回傳手上還沒上架的商品（由 Game 退回倉庫） */
+  leaveWork(reserved: Set<string>): Batch[] {
+    const carrying = this.carrying;
+    this.carrying = [];
+    this.dropTask(reserved);
+    this.registerId = null;
+    return carrying;
+  }
+
   /** 推進一步；reserved 為所有店員已認領的格位 */
   update(world: StaffWorld, reserved: Set<string>): void {
     this.beginStep();

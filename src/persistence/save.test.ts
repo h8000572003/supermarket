@@ -58,6 +58,29 @@ describe('存檔與讀檔', () => {
     expect(loaded.funds).toBe(original.funds);
   });
 
+  it('記錄前一天的狀況種類，讀檔後仍不連續兩天發生同種類', () => {
+    const storage = new MemoryStorage();
+    const game = establishedGame();
+    const yesterday = game.lastReport!.incidents.map((i) => i.kind);
+    expect(yesterday.length).toBeGreaterThan(0);
+    expect(game.snapshot()?.previousIncidentKinds).toEqual(yesterday);
+    saveGame(game, storage);
+    const loaded = loadGame(storage)!;
+    expect(loaded.snapshot()?.previousIncidentKinds).toEqual(yesterday);
+    runOpenHours(loaded);
+    const today = loaded.lastReport!.incidents.map((i) => i.kind);
+    expect(today.length).toBeGreaterThan(0);
+    for (const kind of today) expect(yesterday).not.toContain(kind);
+  });
+
+  it('舊版本（沒有狀況欄位）的存檔直接捨棄', () => {
+    const storage = new MemoryStorage();
+    const old = { ...establishedGame().snapshot()!, version: 2 } as Record<string, unknown>;
+    delete old.previousIncidentKinds;
+    storage.setItem(SAVE_KEY, JSON.stringify(old));
+    expect(loadGame(storage)).toBeNull();
+  });
+
   it('營業時段不存檔', () => {
     const storage = new MemoryStorage();
     const game = new Game({ seed: 1 });

@@ -6,6 +6,7 @@ import { BuildToolbar } from './ui/BuildToolbar';
 import { DailyReportPanel } from './ui/DailyReportPanel';
 import type { Controller } from './ui/controller';
 import { Hud } from './ui/Hud';
+import { IncidentDialog } from './ui/IncidentDialog';
 import { MilestonesPanel } from './ui/MilestonesPanel';
 import { StockPanel } from './ui/StockPanel';
 
@@ -63,6 +64,7 @@ export function App({ controller, sounds }: { controller: Controller; sounds: So
       <BuildToolbar controller={controller} />
       {panel === 'stock' && <StockPanel controller={controller} onClose={() => setPanel(null)} />}
       {panel === 'milestones' && <MilestonesPanel game={controller.game} onClose={() => setPanel(null)} />}
+      <IncidentDialog controller={controller} />
       <DailyReportPanel game={controller.game} />
     </>
   );

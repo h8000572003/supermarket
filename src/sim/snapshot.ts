@@ -1,12 +1,13 @@
 import type { CategoryId } from './catalog/products';
 import type { Speed } from './clock/clock';
 import type { PurchaseOrder } from './economy/purchase-order';
+import type { IncidentKind } from './incidents/incidents';
 import type { InventorySnapshot } from './inventory/inventory';
 import type { WasteLine } from './report/daily-report';
 import type { Fixture } from './store/store-layout';
 
 /** 快照格式版本；結構改變時遞增，舊版存檔即不再讀取 */
-export const SNAPSHOT_VERSION = 2;
+export const SNAPSHOT_VERSION = 3;
 
 /**
  * 準備階段的完整遊戲狀態（見 ADR 0002）。
@@ -31,6 +32,8 @@ export interface GameSnapshot {
   readonly pendingOrders: readonly PurchaseOrder[];
   readonly rngState: number;
   readonly speed: Speed;
+  /** 前一個營業日發生過的狀況種類，讓讀檔後仍維持「不連續兩天同種類」 */
+  readonly previousIncidentKinds: readonly IncidentKind[];
   /** 當天準備階段已記下的帳 */
   readonly ledger: {
     readonly fundsAtStart: number;

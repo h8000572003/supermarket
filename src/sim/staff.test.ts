@@ -3,7 +3,7 @@ import { FIXTURES } from './catalog/fixtures';
 import { MAX_STEPS_PER_TICK, STEP_MS } from './clock/clock';
 import { DAILY_RENT, DAILY_WAGE, Game, MAX_STAFF } from './game';
 import { totalQty } from './inventory/batch';
-import { playThroughDay, runOpenHours } from './test-helpers';
+import { playThroughDay, runOpenHours, tickResolving } from './test-helpers';
 
 /** 冷藏櫃（4 格）放可樂；倉庫有 qty 瓶可樂（第 2 天送達） */
 function storeWithCola(qty: number, staffCount: number) {
@@ -87,7 +87,7 @@ describe('店員補貨', () => {
     game.openStore();
     let maxClaims = 0;
     while (game.phase === 'open') {
-      game.tick(STEP_MS);
+      tickResolving(game, STEP_MS);
       maxClaims = Math.max(maxClaims, game.staffAgents.filter((a) => a.task).length);
     }
     expect(maxClaims).toBe(1);
@@ -100,7 +100,7 @@ describe('店員補貨', () => {
     game.openStore();
     const agent = game.staffAgents[0]!;
     expect(agent.pos).toEqual({ x: 0, y: 2 });
-    while (agent.activity !== 'stocking' && game.phase === 'open') game.tick(STEP_MS);
+    while (agent.activity !== 'stocking' && game.phase === 'open') tickResolving(game, STEP_MS);
     // 冷藏櫃 (6,3)–(7,3) 朝南，格位 3 在右半邊 → 取用格 (7,4)
     expect(agent.pos).toEqual({ x: 7, y: 4 });
   });
@@ -109,7 +109,7 @@ describe('店員補貨', () => {
     const { game } = storeWithCola(12, 1);
     game.openStore();
     expect(game.staffAgents).toHaveLength(1);
-    while (game.phase === 'open') game.tick(STEP_MS * MAX_STEPS_PER_TICK);
+    while (game.phase === 'open') tickResolving(game, STEP_MS * MAX_STEPS_PER_TICK);
     expect(game.staffAgents).toHaveLength(0);
   });
 });
