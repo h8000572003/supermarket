@@ -12,8 +12,15 @@ import { StaffAgent } from './agents/staff';
 import type { StaffWorld } from './agents/staff';
 import { CLOSE_MINUTE, MAX_STEPS_PER_TICK, MINUTES_PER_STEP, STEPS_PER_DAY, STEP_MS, minuteOfDay } from './clock/clock';
 import type { Speed } from './clock/clock';
-import { orderTotal } from './economy/purchase-order';
+import { goodsTotal, orderTotal } from './economy/purchase-order';
 import type { OrderLine, PurchaseOrder } from './economy/purchase-order';
+import {
+  RUSH_DELIVERY_MINUTES,
+  RUSH_LAST_ORDER_MINUTE,
+  RUSH_ORDERS_PER_DAY,
+  STANDARD_RUSH_TERMS,
+} from './economy/rush-order';
+import type { RushOrder, RushOrderTerms } from './economy/rush-order';
 import { isExpired } from './inventory/expiry';
 import { Inventory } from './inventory/inventory';
 import type { Slot } from './inventory/inventory';
@@ -68,6 +75,12 @@ export type CommandError =
   | 'empty-order'
   /** 低於最低訂購量 */
   | 'below-min-order'
+  /** 今天的緊急叫貨次數已用完 */
+  | 'rush-limit-reached'
+  /** 已過緊急叫貨的最後下單時刻 */
+  | 'rush-too-late'
+  /** 這次叫貨不能訂這個類別的商品 */
+  | 'wrong-category'
   /** 店員人數已達上限 */
   | 'staff-full'
   /** 找不到指定的店員 */
@@ -127,6 +140,7 @@ export type GameEvent =
   | { readonly type: 'store-opened' }
   | { readonly type: 'sale'; readonly amount: number }
   | { readonly type: 'abandon' }
+  | { readonly type: 'rush-delivered'; readonly lines: readonly OrderLine[] }
   | { readonly type: 'day-ended'; readonly bankrupt: boolean }
   | { readonly type: 'milestone'; readonly id: string };
 
@@ -140,6 +154,15 @@ const STAFF_NAMES = ['小林', '阿明', '小美', '阿傑', '小芳', '阿凱',
 
 /** 顧客排隊耐心（步數）的範圍 */
 const PATIENCE_RANGE: readonly [number, number] = [80, 140];
+
+/** 緊急叫貨下單到送達的步數 */
+const RUSH_DELIVERY_STEPS = Math.round(RUSH_DELIVERY_MINUTES / MINUTES_PER_STEP);
+
+/** 營業中待送達的緊急叫貨與預計送達的步數 */
+interface PendingRush {
+  readonly order: RushOrder;
+  readonly etaStep: number;
+}
 
 const FACING_DIR: Record<Facing, GridPoint> = {
   north: { x: 0, y: -1 },
@@ -167,6 +190,8 @@ export class Game {
   private readonly unlocked = new Set<CategoryId>(STARTING_CATEGORIES);
   private readonly salePrices = new Map(PRODUCTS.map((p) => [p.id, p.suggestedPrice]));
   private _pendingOrders: PurchaseOrder[] = [];
+  private pendingRush: PendingRush[] = [];
+  private rushOrdersUsed = 0;
   private _step = 0;
   private _speed: Speed = 1;
   private stepRemainderMs = 0;
@@ -344,9 +369,19 @@ export class Game {
     return this.ledger.revenue;
   }
 
-  /** 已下單、尚未送達的進貨單 */
+  /** 已下單、尚未送達的進貨單（含打烊前未送達、改於下一個營業日開店前送達的緊急叫貨） */
   get pendingOrders(): readonly PurchaseOrder[] {
     return this._pendingOrders;
+  }
+
+  /** 營業中已下單、尚未送達的緊急叫貨（含預計送達時刻） */
+  get rushOrders(): readonly RushOrder[] {
+    return this.pendingRush.map((r) => r.order);
+  }
+
+  /** 今天還能下幾次緊急叫貨 */
+  get rushOrdersLeftToday(): number {
+    return Math.max(0, RUSH_ORDERS_PER_DAY - this.rushOrdersUsed);
   }
 
   isUnlocked(category: CategoryId): boolean {
@@ -482,14 +517,9 @@ export class Game {
   /** 下進貨單並立即付款（商品金額 + 運費）；第 1 天的開幕進貨立即送達，其餘隔天送達 */
   submitPurchaseOrder(lines: readonly OrderLine[]): Result<PurchaseOrder> {
     if (this._phase !== 'prep') return fail('not-prep-phase');
-    const nonEmpty = lines.filter((l) => l.qty > 0);
-    if (nonEmpty.length === 0) return fail('empty-order');
-    for (const line of nonEmpty) {
-      const product = productById(line.productId);
-      if (!product) return fail('unknown-product');
-      if (!this.unlocked.has(product.category)) return fail('category-locked');
-      if (!Number.isInteger(line.qty) || line.qty < product.minOrder) return fail('below-min-order');
-    }
+    const checked = this.checkOrderLines(lines);
+    if (!checked.ok) return checked;
+    const nonEmpty = checked.value;
     const total = orderTotal(nonEmpty);
     if (this._funds < total) return fail('insufficient-funds');
     const order: PurchaseOrder = { lines: nonEmpty, placedDay: this._day, total };
@@ -499,6 +529,57 @@ export class Game {
     this.ledger.purchases += total;
     this.changed();
     return ok(order);
+  }
+
+  /**
+   * 營業中下緊急叫貨並立即付款（商品金額 + 運費）；明細格式與最低訂購量同一般進貨單。
+   * 下單後 2 遊戲小時送達倉庫；打烊前未送達的，改於下一個營業日開店前送達。
+   * terms 預設為店長的一般緊急叫貨；狀況可給免運費、不佔每日次數的條件（見 freeRushTerms）。
+   */
+  placeRushOrder(lines: readonly OrderLine[], terms: RushOrderTerms = STANDARD_RUSH_TERMS): Result<RushOrder> {
+    const phase = phaseError(this._phase, 'open');
+    if (phase) return fail(phase);
+    if (terms.countsTowardDailyLimit && this.rushOrdersLeftToday === 0) return fail('rush-limit-reached');
+    if (this.minuteOfDay >= RUSH_LAST_ORDER_MINUTE) return fail('rush-too-late');
+    const checked = this.checkOrderLines(lines);
+    if (!checked.ok) return checked;
+    const nonEmpty = checked.value;
+    if (terms.category && nonEmpty.some((l) => productById(l.productId)?.category !== terms.category)) {
+      return fail('wrong-category');
+    }
+    const goods = goodsTotal(nonEmpty);
+    const total = goods + terms.shippingFee;
+    if (this._funds < total) return fail('insufficient-funds');
+    const etaStep = this._step + RUSH_DELIVERY_STEPS;
+    const order: RushOrder = {
+      lines: nonEmpty,
+      placedDay: this._day,
+      placedMinute: this.minuteOfDay,
+      etaMinute: minuteOfDay(etaStep),
+      goods,
+      shipping: terms.shippingFee,
+      total,
+    };
+    this.pendingRush = [...this.pendingRush, { order, etaStep }];
+    if (terms.countsTowardDailyLimit) this.rushOrdersUsed++;
+    this._funds -= total;
+    this.ledger.purchases += goods;
+    this.ledger.rushShipping += terms.shippingFee;
+    this.changed();
+    return ok(order);
+  }
+
+  /** 進貨明細的共同檢查：略過數量 0 的品項，商品須存在、已解鎖、不低於最低訂購量 */
+  private checkOrderLines(lines: readonly OrderLine[]): Result<OrderLine[]> {
+    const nonEmpty = lines.filter((l) => l.qty > 0);
+    if (nonEmpty.length === 0) return fail('empty-order');
+    for (const line of nonEmpty) {
+      const product = productById(line.productId);
+      if (!product) return fail('unknown-product');
+      if (!this.unlocked.has(product.category)) return fail('category-locked');
+      if (!Number.isInteger(line.qty) || line.qty < product.minOrder) return fail('below-min-order');
+    }
+    return ok(nonEmpty);
   }
 
   /** 雇用一位店員；日薪於每天打烊時支付 */
@@ -617,6 +698,8 @@ export class Game {
     this.reservedSlots.clear();
     this._dispatches = [];
     this.customers = [];
+    this.pendingRush = [];
+    this.rushOrdersUsed = 0;
     this.checkout = new Checkout(this.registerSpots(), (p) => this.layout.isWalkable(p));
     this.emit({ type: 'store-opened' });
     this.changed();
@@ -667,11 +750,31 @@ export class Game {
     for (const customer of this.customers) customer.update(this.customerWorld);
     this.removeDepartedCustomers();
     this._step++;
+    this.deliverDueRushOrders();
     if (this._step >= STEPS_PER_DAY) this.closeStore();
+  }
+
+  /** 送達已到預計時刻的緊急叫貨 */
+  private deliverDueRushOrders(): void {
+    if (this.pendingRush.length === 0) return;
+    const due = this.pendingRush.filter((r) => r.etaStep <= this._step);
+    if (due.length === 0) return;
+    this.pendingRush = this.pendingRush.filter((r) => r.etaStep > this._step);
+    for (const { order } of due) {
+      this.deliver(order);
+      this.emit({ type: 'rush-delivered', lines: order.lines });
+    }
+    this.changed();
   }
 
   /** 營業時段 → 每日結算：支付固定支出並產生結算 */
   private closeStore(): void {
+    // 未送達的緊急叫貨轉為一般待送達進貨，下一個營業日開店前送達（ADR 0003）
+    this._pendingOrders = [
+      ...this._pendingOrders,
+      ...this.pendingRush.map(({ order }) => ({ lines: order.lines, placedDay: order.placedDay, total: order.total })),
+    ];
+    this.pendingRush = [];
     // 還在店內的顧客離開，未結帳的商品退回倉庫
     for (const c of this.customers) c.forceLeave(this.customerWorld);
     this.removeDepartedCustomers();
@@ -732,7 +835,7 @@ export class Game {
     return ok(undefined);
   }
 
-  private deliver(order: PurchaseOrder): void {
+  private deliver(order: { readonly lines: readonly OrderLine[] }): void {
     this.inventory.receive(order.lines.map((l) => ({ productId: l.productId, qty: l.qty, arrivedDay: this._day })));
   }
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { MAX_STEPS_PER_TICK, STEP_MS } from '../sim/clock/clock';
 import { Game } from '../sim/game';
 import { playThroughDay, runOpenHours } from '../sim/test-helpers';
 import { SAVE_KEY, clearSave, loadGame, saveGame } from './save';
@@ -78,6 +79,22 @@ describe('存檔與讀檔', () => {
   it('沒有 storage 時不出錯', () => {
     expect(saveGame(new Game({ seed: 1 }), null)).toBe(false);
     expect(loadGame(null)).toBeNull();
+  });
+
+  it('打烊前未送達的緊急叫貨，進入準備階段存讀檔後仍在', () => {
+    const storage = new MemoryStorage();
+    const game = establishedGame();
+    game.openStore();
+    // 21:30 下單，預計 23:30 送達，晚於打烊
+    while (game.minuteOfDay < 21 * 60 + 30) game.tick(STEP_MS / game.speed);
+    expect(game.placeRushOrder([{ productId: 'chips', qty: 12 }]).ok).toBe(true);
+    while (game.phase === 'open') game.tick(STEP_MS * MAX_STEPS_PER_TICK);
+    game.startNextDay();
+
+    expect(saveGame(game, storage)).toBe(true);
+    const loaded = loadGame(storage)!;
+    expect(loaded.snapshot()).toEqual(game.snapshot());
+    expect(loaded.snapshot()!.inventory.backroom).toContainEqual({ productId: 'chips', qty: 12, arrivedDay: loaded.day });
   });
 
   it('清除存檔', () => {

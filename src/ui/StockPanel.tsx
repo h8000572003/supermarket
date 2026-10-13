@@ -5,6 +5,7 @@ import { isOpeningDelivery, phaseError } from '../sim/game';
 import type { Controller } from './controller';
 import { useGameVersion } from './hooks';
 import { formatMoney } from './messages';
+import { RushOrderSection } from './RushOrderSection';
 
 /** 商品與進貨：調整售價、查看倉庫庫存、下進貨單；營業時段可開啟查看，但售價與進貨單鎖定 */
 export function StockPanel({ controller, onClose }: { controller: Controller; onClose: () => void }) {
@@ -112,6 +113,7 @@ export function StockPanel({ controller, onClose }: { controller: Controller; on
           })}
         </tbody>
       </table>
+      {game.phase === 'open' && <RushOrderSection controller={controller} />}
       <footer>
         <span>
           小計 {formatMoney(Math.max(0, total - (lines.length ? SHIPPING_FEE : 0)))} ＋ 運費 {formatMoney(SHIPPING_FEE)} ＝{' '}
