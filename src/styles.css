@@ -279,6 +279,59 @@ select {
   text-align: right;
 }
 
+/* 營業中的緊急叫貨區 */
+.rush-order {
+  max-height: 45%;
+  overflow: auto;
+  padding: 10px 14px;
+  border-top: 1px solid #343946;
+  font-size: 14px;
+}
+
+.rush-order h3 {
+  margin: 0 0 6px;
+  font-size: 15px;
+}
+
+.rush-order h3 small {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 400;
+  opacity: 0.7;
+}
+
+.rush-pending {
+  margin: 4px 0;
+}
+
+.rush-pending strong,
+.rush-submit strong {
+  color: #ffd86b;
+}
+
+.rush-lines {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 4px 12px;
+  margin: 6px 0;
+}
+
+.rush-lines label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.rush-submit {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
 .speed-group {
   display: flex;
   gap: 2px;

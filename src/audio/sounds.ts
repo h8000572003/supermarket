@@ -100,6 +100,7 @@ const EVENT_SOUND: Record<GameEvent['type'], SoundName> = {
   'store-opened': 'open',
   sale: 'sale',
   abandon: 'abandon',
+  'rush-delivered': 'place',
   'day-ended': 'day-end',
   milestone: 'milestone',
 };

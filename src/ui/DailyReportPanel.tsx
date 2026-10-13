@@ -50,6 +50,8 @@ export function DailyReportPanel({ game }: { game: Game }) {
             <dd className="positive">{formatMoney(report.revenue)}</dd>
             <dt>進貨支出</dt>
             <dd>{formatExpense(report.purchases)}</dd>
+            <dt>緊急叫貨運費</dt>
+            <dd>{formatExpense(report.rushShipping)}</dd>
             {report.fixtures !== 0 && (
               <>
                 <dt>設施購置（扣除出售回收）</dt>
