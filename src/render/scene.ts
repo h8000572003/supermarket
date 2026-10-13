@@ -11,7 +11,7 @@ import type { Controller } from '../ui/controller';
 import { PersonSprite, STAFF_LOOK, customerLook, loadAgentTextures } from './agent-sprites';
 import type { PersonLook } from './agent-sprites';
 import { createFixtureSprites, loadFixtureTextures } from './fixture-sprites';
-import { createStockItems, drawStockAlerts } from './stock-visuals';
+import { createStockItems, drawStockAlerts, loadProductTextures } from './stock-visuals';
 import type { FixtureStyle } from './fixture-sprites';
 import { TILE_HEIGHT, TILE_WIDTH, gridToScreen, screenToGrid, tileDiamond } from './iso';
 
@@ -51,6 +51,7 @@ export async function createStoreScene(host: HTMLElement, controller: Controller
     app.init({ resizeTo: host, background: COLORS.background, antialias: true }),
     loadFixtureTextures(),
     loadAgentTextures(),
+    loadProductTextures(),
   ]);
   host.appendChild(app.canvas);
 
