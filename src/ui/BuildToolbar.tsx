@@ -24,7 +24,7 @@ export function BuildToolbar({ controller }: { controller: Controller }) {
           <span className="hint">
             {open
               ? '點選格位或收銀台可「優先處理」派工；擺設、進貨與定價請在準備階段進行'
-              : '目前只能觀察；擺設、進貨與定價請在準備階段進行'}
+              : '營業中可限時特價、緊急叫貨（商品與進貨）或點陳列櫃／收銀台派工；擺設與定價請在準備階段進行'}
           </span>
         </div>
       </div>
