@@ -135,3 +135,56 @@ export function drawFridgeTile(tile: GridPoint, facing: Facing): Graphics {
   g.poly(face(0.84, 0.87, 26, 52)).fill(0xb0bec5).stroke(OUTLINE);
   return g;
 }
+
+const REGISTER = {
+  counter: { top: 0xf7f4ee, side: 0x9e8a70, front: 0xc4ad8c },
+  panel: 0x43a047,
+  machine: { top: 0x90a4ae, side: 0x455a64, front: 0x607d8b },
+  screen: 0x80deea,
+  height: 30,
+  inset: 0.06,
+};
+
+/** 往店員側（背面）的單位向量 */
+const TO_STAFF: Record<Facing, GridPoint> = {
+  south: { x: 0, y: -1 },
+  north: { x: 0, y: 1 },
+  east: { x: -1, y: 0 },
+  west: { x: 1, y: 0 },
+};
+
+/**
+ * 收銀台：木紋櫃台、正面綠色面板；檯面上放收銀機，螢幕立在店員側。
+ */
+export function drawRegisterTile(tile: GridPoint, facing: Facing): Graphics {
+  const g = new Graphics();
+  const i = REGISTER.inset;
+  const x0 = tile.x + i;
+  const y0 = tile.y + i;
+  const x1 = tile.x + 1 - i;
+  const y1 = tile.y + 1 - i;
+  box(g, x0, y0, x1, y1, 0, REGISTER.height, REGISTER.counter);
+  if (FRONT_VISIBLE[facing]) {
+    const face = onFront(tile, facing, i);
+    g.poly(face(0.08, 0.92, 4, REGISTER.height - 6)).fill(REGISTER.panel).stroke(OUTLINE);
+    g.poly(face(0.08, 0.92, 12, 15)).fill(0xffffff);
+  }
+  // 收銀機本體（檯面中央偏店員側）與立起的螢幕
+  const s = TO_STAFF[facing];
+  const cx = tile.x + 0.5 + s.x * 0.12;
+  const cy = tile.y + 0.5 + s.y * 0.12;
+  const h = 0.2;
+  box(g, cx - h, cy - h, cx + h, cy + h, REGISTER.height, REGISTER.height + 7, REGISTER.machine);
+  const sx = cx + s.x * 0.22;
+  const sy = cy + s.y * 0.22;
+  const w = 0.17;
+  const t = 0.04;
+  const [ax0, ax1] = s.x === 0 ? [sx - w, sx + w] : [sx - t, sx + t];
+  const [ay0, ay1] = s.y === 0 ? [sy - w, sy + w] : [sy - t, sy + t];
+  box(g, ax0, ay0, ax1, ay1, REGISTER.height + 7, REGISTER.height + 20, {
+    top: REGISTER.machine.top,
+    side: s.x !== 0 ? REGISTER.screen : REGISTER.machine.side,
+    front: s.y !== 0 ? REGISTER.screen : REGISTER.machine.front,
+  });
+  return g;
+}

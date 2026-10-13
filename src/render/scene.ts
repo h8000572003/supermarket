@@ -130,6 +130,7 @@ export async function createStoreScene(host: HTMLElement, controller: Controller
       const y = agent.prev.y + (agent.pos.y - agent.prev.y) * alpha;
       const p = gridToScreen(x + 0.5, y + 0.5);
       sprite.position.set(p.x, p.y);
+      sprite.faceToward(p.x);
       sprite.zIndex = (x + y) * 10 + 5;
       return sprite;
     };
