@@ -54,6 +54,8 @@ export interface DailyReport {
   readonly rent: number;
   readonly wages: number;
   readonly waste: readonly WasteLine[];
+  /** 當天曾限時特價的類別 */
+  readonly flashSaleCategories: readonly CategoryId[];
   readonly progress: DayProgress;
 }
 
@@ -74,6 +76,8 @@ export class DayLedger {
   rent = 0;
   wages = 0;
   waste: WasteLine[] = [];
+  /** 當天曾限時特價的類別 */
+  readonly flashSaleCategories = new Set<CategoryId>();
 
   constructor(
     readonly day: number,
@@ -124,6 +128,7 @@ export class DayLedger {
       rent: this.rent,
       wages: this.wages,
       waste: this.waste,
+      flashSaleCategories: [...this.flashSaleCategories],
     };
   }
 }

@@ -13,6 +13,8 @@ import type { StaffWorld } from './agents/staff';
 import { CLOSE_MINUTE, MAX_STEPS_PER_TICK, MINUTES_PER_STEP, STEPS_PER_DAY, STEP_MS, minuteOfDay } from './clock/clock';
 import type { Speed } from './clock/clock';
 import { goodsTotal, orderTotal } from './economy/purchase-order';
+import { FlashSales, MAX_FLASH_SALES, flashSalePrice, isFlashSaleTier } from './economy/flash-sale';
+import type { FlashSale, FlashSaleTier } from './economy/flash-sale';
 import type { OrderLine, PurchaseOrder } from './economy/purchase-order';
 import {
   RUSH_DELIVERY_MINUTES,
@@ -96,7 +98,13 @@ export type CommandError =
   /** 格位已經補滿 */
   | 'slot-full'
   /** 倉庫沒有這個商品 */
-  | 'no-backroom-stock';
+  | 'no-backroom-stock'
+  /** 限時特價只能選 9 折、8 折、7 折 */
+  | 'invalid-discount'
+  /** 這個商品已在限時特價中 */
+  | 'flash-sale-active'
+  /** 同時進行的限時特價已達上限 */
+  | 'flash-sale-limit';
 
 export type Result<T = void> = { ok: true; value: T } | { ok: false; error: CommandError };
 
@@ -142,7 +150,15 @@ export type GameEvent =
   | { readonly type: 'abandon' }
   | { readonly type: 'rush-delivered'; readonly lines: readonly OrderLine[] }
   | { readonly type: 'day-ended'; readonly bankrupt: boolean }
-  | { readonly type: 'milestone'; readonly id: string };
+  | { readonly type: 'milestone'; readonly id: string }
+  | {
+      readonly type: 'flash-sale-started';
+      readonly productId: string;
+      readonly tier: FlashSaleTier;
+      readonly price: number;
+    }
+  /** 限時特價到期、恢復售價（打烊時的結束不另外通知） */
+  | { readonly type: 'flash-sale-ended'; readonly productId: string };
 
 /** 受雇的店員（跨營業日存在） */
 export interface Staff {
@@ -189,6 +205,7 @@ export class Game {
   private _day = 1;
   private readonly unlocked = new Set<CategoryId>(STARTING_CATEGORIES);
   private readonly salePrices = new Map(PRODUCTS.map((p) => [p.id, p.suggestedPrice]));
+  private readonly flashSaleState = new FlashSales();
   private _pendingOrders: PurchaseOrder[] = [];
   private pendingRush: PendingRush[] = [];
   private rushOrdersUsed = 0;
@@ -395,8 +412,19 @@ export class Game {
     this.changed();
   }
 
+  /** 店長設定的售價（不含限時特價） */
   salePrice(productId: string): number | undefined {
     return this.salePrices.get(productId);
+  }
+
+  /** 顧客當下看到的實際售價：限時特價中為折扣後價格 */
+  currentPrice(productId: string): number | undefined {
+    return this.flashSaleState.priceOf(productId) ?? this.salePrices.get(productId);
+  }
+
+  /** 進行中的限時特價與剩餘時間 */
+  get flashSales(): readonly FlashSale[] {
+    return this.flashSaleState.list(this._step);
   }
 
   backroomQty(productId: string): number {
@@ -582,6 +610,25 @@ export class Game {
     return ok(nonEmpty);
   }
 
+  /** 營業時段對商品開始限時特價（9／8／7 折），持續 2 遊戲小時後自動恢復售價 */
+  startFlashSale(productId: string, tier: number): Result<FlashSale> {
+    const phase = phaseError(this._phase, 'open');
+    if (phase) return fail(phase);
+    const product = productById(productId);
+    if (!product) return fail('unknown-product');
+    if (!this.unlocked.has(product.category)) return fail('category-locked');
+    if (!isFlashSaleTier(tier)) return fail('invalid-discount');
+    if (this.flashSaleState.has(productId)) return fail('flash-sale-active');
+    if (this.flashSaleState.count >= MAX_FLASH_SALES) return fail('flash-sale-limit');
+    const price = flashSalePrice(this.salePrices.get(productId) ?? product.suggestedPrice, tier);
+    this.flashSaleState.start(productId, tier, price, this._step);
+    this.ledger.flashSaleCategories.add(product.category);
+    this.emit({ type: 'flash-sale-started', productId, tier, price });
+    this.changed();
+    const sale = this.flashSales.find((s) => s.productId === productId) as FlashSale;
+    return ok(sale);
+  }
+
   /** 雇用一位店員；日薪於每天打烊時支付 */
   hireStaff(): Result<Staff> {
     if (this._phase !== 'prep') return fail('not-prep-phase');
@@ -751,6 +798,7 @@ export class Game {
     this.removeDepartedCustomers();
     this._step++;
     this.deliverDueRushOrders();
+    this.expireFlashSales();
     if (this._step >= STEPS_PER_DAY) this.closeStore();
   }
 
@@ -765,6 +813,13 @@ export class Game {
       this.emit({ type: 'rush-delivered', lines: order.lines });
     }
     this.changed();
+  }
+
+  /** 到期的限時特價恢復售價並通知 */
+  private expireFlashSales(): void {
+    const ended = this.flashSaleState.expire(this._step);
+    for (const productId of ended) this.emit({ type: 'flash-sale-ended', productId });
+    if (ended.length > 0) this.changed();
   }
 
   /** 營業時段 → 每日結算：支付固定支出並產生結算 */
@@ -783,6 +838,8 @@ export class Game {
     this.agents = [];
     this.reservedSlots.clear();
     this._dispatches = [];
+    // 打烊時所有限時特價結束，隔天的售價維持原本設定
+    this.flashSaleState.clear();
     this.ledger.rent = DAILY_RENT;
     this.ledger.wages = this._staff.length * DAILY_WAGE;
     this._funds -= this.ledger.rent + this.ledger.wages;
@@ -900,7 +957,7 @@ export class Game {
       return slot?.productId ? { productId: slot.productId, qty: totalQty(slot.batches) } : null;
     },
     pricing: (productId) => ({
-      salePrice: this.salePrices.get(productId) ?? 0,
+      salePrice: this.currentPrice(productId) ?? 0,
       suggestedPrice: productById(productId)?.suggestedPrice ?? 1,
     }),
     takeOne: (fixtureId, slotIndex) => this.inventory.takeFromSlot(fixtureId, slotIndex, 1),

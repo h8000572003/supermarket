@@ -214,6 +214,25 @@ select {
   opacity: 0.8;
 }
 
+/* 營業中多一欄限時特價 */
+.side-panel.open-hours {
+  width: min(800px, calc(100vw - 24px));
+}
+
+.flash-sale-tiers {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.flash-sale-tiers button {
+  padding: 2px 6px;
+  font-size: 12px;
+}
+
+.flash-sale-active {
+  color: #ffd86b;
+}
+
 /* 營業中：售價與進貨單鎖定 */
 .side-panel.open-hours input:disabled {
   opacity: 0.5;
@@ -503,7 +522,7 @@ button {
 
 .bars li {
   display: grid;
-  grid-template-columns: 4em 1fr 3em;
+  grid-template-columns: 4em 1fr 3em 6.5em;
   align-items: center;
   gap: 8px;
 }
@@ -526,6 +545,17 @@ button {
 .bar-value {
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+/* 每日結算：當天曾限時特價的類別 */
+.flash-sale-tag {
+  white-space: nowrap;
+  justify-self: start;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: #5a3d12;
+  color: #ffd86b;
+  font-size: 12px;
 }
 
 .milestones-panel {
