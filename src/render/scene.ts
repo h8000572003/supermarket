@@ -11,6 +11,7 @@ import type { Controller } from '../ui/controller';
 import { PersonSprite, STAFF_LOOK, customerLook, loadAgentTextures } from './agent-sprites';
 import type { PersonLook } from './agent-sprites';
 import { createFixtureSprites, loadFixtureTextures } from './fixture-sprites';
+import { createStockItems, drawStockAlerts } from './stock-visuals';
 import type { FixtureStyle } from './fixture-sprites';
 import { TILE_HEIGHT, TILE_WIDTH, gridToScreen, screenToGrid, tileDiamond } from './iso';
 
@@ -58,8 +59,9 @@ export async function createStoreScene(host: HTMLElement, controller: Controller
 
   const overlay = new Graphics();
   const objects = new Container({ sortableChildren: true });
+  const stockAlerts = new Graphics();
   const markers = new Graphics();
-  world.addChild(drawWalls(), drawFloor(), drawEntrance(), overlay, objects, markers);
+  world.addChild(drawWalls(), drawFloor(), drawEntrance(), overlay, objects, stockAlerts, markers);
 
   // 實際縮放 = 依畫面大小自動貼合的基準 × 玩家以滾輪調整的倍率
   let userZoom = 1;
@@ -103,6 +105,7 @@ export async function createStoreScene(host: HTMLElement, controller: Controller
   const redraw = () => {
     drawObjects(objects, game, controller);
     drawOverlay(overlay, game, controller);
+    drawStockAlerts(stockAlerts, game);
     drawDispatchMarkers(markers, game);
   };
   redraw();
@@ -175,6 +178,15 @@ function drawObjects(objects: Container, game: Game, { interaction }: Controller
 
   for (const f of game.fixtures) {
     add(f.kind, f, f.id === movingId ? 'moving-origin' : 'normal');
+    if (f.id === movingId) continue;
+    // 架上的商品緊接在那一格家具圖之後畫，人物仍可擋在前面
+    for (const tile of footprintTiles(footprint(FIXTURES[f.kind], f))) {
+      const items = createStockItems(game, f, tile);
+      if (!items) continue;
+      items.label = FIXTURE_LABEL;
+      items.zIndex = (tile.x + tile.y) * 10 + 1;
+      objects.addChild(items);
+    }
   }
 
   if (tool.mode === 'place' && hover) {
