@@ -1,7 +1,54 @@
 :root {
+  /* 顏色 */
+  --bg: #2b2f3a;
+  --text: #f3f1ec;
+  --surface: rgb(20 22 28 / 0.85);
+  --surface-solid: rgb(20 22 28 / 0.95);
+  --panel: #1b1e25;
+  --backdrop: rgb(10 12 16 / 0.55);
+  --border: #4a5060;
+  --control: #343946;
+  --control-hover: #3e4452;
+  --input-bg: #22262f;
+  --accent: #ffd86b;
+  --active-bg: #4b4532;
+  --primary-border: #c9a23f;
+  --primary-bg: #6b5521;
+  --danger-border: #8a4a48;
+  --danger-bg: #8a3f3c;
+  --negative: #ff8a80;
+  --positive: #8be0a0;
+  --success: #5fb37a;
+  --tag-bg: #5a3d12;
+  --danger-soft: rgb(138 63 60 / 0.45);
+  --primary-soft: rgb(201 162 63 / 0.25);
+  --shadow: 0 12px 40px rgb(0 0 0 / 0.4);
+
+  /* 間距、圓角、字級 */
+  --gap: 8px;
+  --edge: 12px;
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+  --font-sm: 12px;
+  --font: 14px;
+  --font-lg: 16px;
+
+  /* 觸控目標的最小尺寸（窄版版面套用） */
+  --touch: 44px;
+
+  /* 畫面四邊的安全距離：瀏海與 Home 條 */
+  --safe-top: calc(env(safe-area-inset-top, 0px) + var(--edge));
+  --safe-right: calc(env(safe-area-inset-right, 0px) + var(--edge));
+  --safe-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--edge));
+  --safe-left: calc(env(safe-area-inset-left, 0px) + var(--edge));
+}
+
+:root {
   font-family: 'PingFang TC', 'Noto Sans TC', system-ui, sans-serif;
-  color: #f3f1ec;
-  background: #2b2f3a;
+  color: var(--text);
+  background: var(--bg);
 }
 
 html,
@@ -10,24 +57,33 @@ body,
   margin: 0;
   height: 100%;
   overflow: hidden;
+  /* 禁止雙擊放大與下拉重新整理；雙指縮放交給畫布自己處理 */
+  overscroll-behavior: none;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .stage {
   position: absolute;
   inset: 0;
+  touch-action: none;
+}
+
+.stage canvas {
+  touch-action: none;
 }
 
 .hud {
   position: absolute;
-  top: 12px;
-  left: 12px;
-  right: 12px;
+  top: var(--safe-top);
+  left: var(--safe-left);
+  right: var(--safe-right);
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 8px 14px;
-  border-radius: 8px;
-  background: rgb(20 22 28 / 0.75);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
   pointer-events: none;
 }
 
@@ -41,14 +97,14 @@ body,
 }
 
 .hud-meta strong {
-  color: #ffd86b;
+  color: var(--accent);
 }
 
 .toolbar-area {
   position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: 12px;
+  left: var(--safe-left);
+  right: var(--safe-right);
+  bottom: var(--safe-bottom);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -65,8 +121,8 @@ body,
   align-items: center;
   gap: 8px;
   padding: 8px;
-  border-radius: 8px;
-  background: rgb(20 22 28 / 0.85);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
   pointer-events: auto;
 }
 
@@ -77,9 +133,9 @@ body,
   align-items: center;
   min-width: 72px;
   padding: 6px 12px;
-  border: 1px solid #4a5060;
-  border-radius: 6px;
-  background: #343946;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--control);
   color: inherit;
   font: inherit;
   cursor: pointer;
@@ -91,8 +147,8 @@ body,
 }
 
 .toolbar button.active {
-  border-color: #ffd86b;
-  background: #4b4532;
+  border-color: var(--accent);
+  background: var(--active-bg);
 }
 
 .toolbar button:disabled {
@@ -101,7 +157,7 @@ body,
 }
 
 .panel button.danger {
-  border-color: #8a4a48;
+  border-color: var(--danger-border);
 }
 
 .hint {
@@ -112,9 +168,9 @@ body,
 
 .toast {
   padding: 6px 14px;
-  border-radius: 6px;
-  background: #8a3f3c;
-  font-size: 14px;
+  border-radius: var(--radius);
+  background: var(--danger-bg);
+  font-size: var(--font);
 }
 
 .hud {
@@ -128,22 +184,22 @@ body,
 
 button {
   padding: 6px 12px;
-  border: 1px solid #4a5060;
-  border-radius: 6px;
-  background: #343946;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--control);
   color: inherit;
   font: inherit;
-  font-size: 14px;
+  font-size: var(--font);
   cursor: pointer;
 }
 
 button:hover:not(:disabled) {
-  background: #3e4452;
+  background: var(--control-hover);
 }
 
 button.primary {
-  border-color: #c9a23f;
-  background: #6b5521;
+  border-color: var(--primary-border);
+  background: var(--primary-bg);
 }
 
 button:disabled {
@@ -154,12 +210,12 @@ button:disabled {
 input,
 select {
   padding: 4px 6px;
-  border: 1px solid #4a5060;
-  border-radius: 4px;
-  background: #22262f;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--input-bg);
   color: inherit;
   font: inherit;
-  font-size: 14px;
+  font-size: var(--font);
 }
 
 .slot-panel {
@@ -172,7 +228,7 @@ select {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 14px;
+  font-size: var(--font);
 }
 
 .slot-label {
@@ -193,8 +249,8 @@ select {
   display: flex;
   flex-direction: column;
   width: min(640px, calc(100vw - 24px));
-  border-radius: 8px;
-  background: rgb(20 22 28 / 0.95);
+  border-radius: var(--radius-lg);
+  background: var(--surface-solid);
   overflow: hidden;
 }
 
@@ -226,11 +282,11 @@ select {
 
 .flash-sale-tiers button {
   padding: 2px 6px;
-  font-size: 12px;
+  font-size: var(--font-sm);
 }
 
 .flash-sale-active {
-  color: #ffd86b;
+  color: var(--accent);
 }
 
 /* 營業中：售價與進貨單鎖定 */
@@ -241,16 +297,16 @@ select {
 
 .side-panel h2 {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--font-lg);
 }
 
 .side-panel footer {
-  border-top: 1px solid #343946;
-  font-size: 14px;
+  border-top: 1px solid var(--control);
+  font-size: var(--font);
 }
 
 .side-panel footer strong {
-  color: #ffd86b;
+  color: var(--accent);
 }
 
 .side-panel table {
@@ -258,7 +314,7 @@ select {
   flex: 1;
   overflow: auto;
   border-collapse: collapse;
-  font-size: 14px;
+  font-size: var(--font);
   font-variant-numeric: tabular-nums;
 }
 
@@ -278,7 +334,7 @@ select {
 .side-panel th {
   position: sticky;
   top: 0;
-  background: #1b1e25;
+  background: var(--panel);
   font-weight: 500;
   opacity: 0.8;
 }
@@ -286,7 +342,7 @@ select {
 .side-panel td small {
   display: block;
   opacity: 0.6;
-  font-size: 12px;
+  font-size: var(--font-sm);
 }
 
 .side-panel tr.locked {
@@ -303,8 +359,8 @@ select {
   max-height: 45%;
   overflow: auto;
   padding: 10px 14px;
-  border-top: 1px solid #343946;
-  font-size: 14px;
+  border-top: 1px solid var(--control);
+  font-size: var(--font);
 }
 
 .rush-order h3 {
@@ -315,7 +371,7 @@ select {
 .rush-order h3 small {
   display: block;
   margin-top: 2px;
-  font-size: 12px;
+  font-size: var(--font-sm);
   font-weight: 400;
   opacity: 0.7;
 }
@@ -326,7 +382,7 @@ select {
 
 .rush-pending strong,
 .rush-submit strong {
-  color: #ffd86b;
+  color: var(--accent);
 }
 
 .rush-lines {
@@ -361,8 +417,8 @@ select {
 }
 
 button.active {
-  border-color: #ffd86b;
-  background: #4b4532;
+  border-color: var(--accent);
+  background: var(--active-bg);
 }
 
 .clock {
@@ -370,11 +426,11 @@ button.active {
 }
 
 .negative {
-  color: #ff8a80 !important;
+  color: var(--negative) !important;
 }
 
 .positive {
-  color: #8be0a0;
+  color: var(--positive);
 }
 
 .modal-backdrop {
@@ -382,7 +438,7 @@ button.active {
   inset: 0;
   display: grid;
   place-items: center;
-  background: rgb(10 12 16 / 0.55);
+  background: var(--backdrop);
 }
 
 .modal {
@@ -391,9 +447,9 @@ button.active {
   gap: 14px;
   width: min(380px, calc(100vw - 32px));
   padding: 20px 22px;
-  border-radius: 10px;
-  background: #1b1e25;
-  box-shadow: 0 12px 40px rgb(0 0 0 / 0.4);
+  border-radius: var(--radius-xl);
+  background: var(--panel);
+  box-shadow: var(--shadow);
 }
 
 .modal h2 {
@@ -433,7 +489,7 @@ button {
   gap: 8px;
 }
 
-@media (max-width: 720px) {
+@media (max-width: 720px), (max-height: 520px) {
   .toolbar button ~ .hint {
     display: none;
   }
@@ -441,12 +497,22 @@ button {
   .toolbar button {
     min-width: 0;
   }
+
+  button,
+  input,
+  select {
+    min-height: var(--touch);
+  }
+
+  button {
+    min-width: var(--touch);
+  }
 }
 
 .divider {
   align-self: stretch;
   width: 1px;
-  background: #4a5060;
+  background: var(--border);
 }
 
 .staff-group {
@@ -454,7 +520,7 @@ button {
   flex-direction: column;
   align-items: center;
   padding: 0 4px;
-  font-size: 14px;
+  font-size: var(--font);
   white-space: nowrap;
 }
 
@@ -489,7 +555,7 @@ button {
 
 .report .total {
   padding-top: 4px;
-  border-top: 1px solid #343946;
+  border-top: 1px solid var(--control);
   font-weight: 700;
 }
 
@@ -497,16 +563,16 @@ button {
 .report-milestone {
   margin: 0;
   padding: 8px 10px;
-  border-radius: 6px;
-  font-size: 14px;
+  border-radius: var(--radius);
+  font-size: var(--font);
 }
 
 .report-alert {
-  background: rgb(138 63 60 / 0.45);
+  background: var(--danger-soft);
 }
 
 .report-milestone {
-  background: rgb(201 162 63 / 0.25);
+  background: var(--primary-soft);
 }
 
 .bars,
@@ -517,7 +583,7 @@ button {
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: 14px;
+  font-size: var(--font);
 }
 
 .bars li {
@@ -530,16 +596,16 @@ button {
 .bar {
   display: block;
   height: 8px;
-  border-radius: 4px;
-  background: #2b2f3a;
+  border-radius: var(--radius-sm);
+  background: var(--bg);
   overflow: hidden;
 }
 
 .bar > span {
   display: block;
   height: 100%;
-  border-radius: 4px;
-  background: #c9a23f;
+  border-radius: var(--radius-sm);
+  background: var(--primary-border);
 }
 
 .bar-value {
@@ -552,10 +618,10 @@ button {
   white-space: nowrap;
   justify-self: start;
   padding: 0 6px;
-  border-radius: 4px;
-  background: #5a3d12;
-  color: #ffd86b;
-  font-size: 12px;
+  border-radius: var(--radius-sm);
+  background: var(--tag-bg);
+  color: var(--accent);
+  font-size: var(--font-sm);
 }
 
 .milestones-panel {
@@ -575,7 +641,7 @@ button {
 }
 
 .milestones li.done .bar > span {
-  background: #5fb37a;
+  background: var(--success);
 }
 
 .milestone-head {
@@ -588,7 +654,7 @@ button {
   opacity: 0.75;
 }
 
-@media (max-width: 720px) {
+@media (max-width: 720px), (max-height: 520px) {
   .side-panel {
     top: 124px;
   }
@@ -596,7 +662,7 @@ button {
 
 .toolbar-hint {
   margin-top: -4px;
-  font-size: 12px;
+  font-size: var(--font-sm);
   opacity: 0.65;
   text-align: center;
 }
@@ -613,8 +679,8 @@ button {
   height: 18px;
   padding: 0 4px;
   border-radius: 9px;
-  background: #c9a23f;
-  color: #1b1e25;
+  background: var(--primary-border);
+  color: var(--panel);
   font-size: 11px;
   font-weight: 700;
   line-height: 18px;
@@ -679,5 +745,5 @@ button {
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: 14px;
+  font-size: var(--font);
 }

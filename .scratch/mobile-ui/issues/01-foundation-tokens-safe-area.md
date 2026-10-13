@@ -6,12 +6,12 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] 在觸控 context 中，對畫布做雙指操作時網頁本身不會縮放
-- [ ] 模擬有瀏海的 safe-area 時，HUD 與工具列不被遮住
-- [ ] `styles.css` 中的顏色、圓角、間距都改用變數（美術用色除外）
-- [ ] 窄版版面下，所有按鈕至少 44×44px
-- [ ] `usePointerCoarse()` 依 `matchMedia('(pointer: coarse)')` 回傳結果，並在變化時更新
-- [ ] 三種尺寸（iPhone 13 直向、iPhone 13 橫向、1440×900 桌機）的 Playwright 截圖符合預期
-- [ ] `npm test`、`npm run lint`、`npm run build` 通過
+- [x] 在觸控 context 中，對畫布做雙指操作時網頁本身不會縮放
+- [x] 模擬有瀏海的 safe-area 時，HUD 與工具列不被遮住
+- [x] `styles.css` 中的顏色、圓角、間距都改用變數（美術用色除外）
+- [x] 窄版版面下，所有按鈕至少 44×44px
+- [x] `usePointerCoarse()` 依 `matchMedia('(pointer: coarse)')` 回傳結果，並在變化時更新
+- [x] 三種尺寸（iPhone 13 直向、iPhone 13 橫向、1440×900 桌機）的 Playwright 截圖符合預期
+- [x] `npm test`、`npm run lint`、`npm run build` 通過
