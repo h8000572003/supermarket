@@ -11,6 +11,8 @@ import {
 import type { Controller } from './controller';
 import { useGameVersion } from './hooks';
 import { formatMoney, formatTime } from './messages';
+import { snapOrderQty } from './order-qty';
+import { Stepper } from './Stepper';
 
 /** 預計送達時刻；晚於打烊時改為下一個營業日開店前 */
 const formatEta = (minute: number) => (minute > CLOSE_MINUTE ? '明天開店前' : formatTime(minute));
@@ -57,14 +59,13 @@ export function RushOrderSection({ controller }: { controller: Controller }) {
         {PRODUCTS.filter((p) => game.isUnlocked(p.category)).map((p) => (
           <label key={p.id}>
             <span>{p.name}</span>
-            <input
-              type="number"
-              min={0}
+            <Stepper
+              label={`${p.name}緊急叫貨量`}
+              value={qty[p.id] ?? 0}
               step={p.minOrder}
               placeholder={`≥${p.minOrder}`}
-              value={qty[p.id] || ''}
               disabled={left === 0 || tooLate}
-              onChange={(e) => setQty((q) => ({ ...q, [p.id]: Math.max(0, Math.floor(Number(e.target.value))) }))}
+              onChange={(v) => setQty((q) => ({ ...q, [p.id]: snapOrderQty(v, q[p.id] ?? 0, p.minOrder) }))}
             />
           </label>
         ))}

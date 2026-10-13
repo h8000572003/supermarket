@@ -1128,3 +1128,247 @@ button {
   color: var(--negative);
   font-size: var(--font-sm);
 }
+
+/* ── 數字步進器：− 數值 ＋ ── */
+.stepper {
+  display: inline-flex;
+  align-items: stretch;
+}
+
+.stepper button {
+  min-width: 32px;
+  padding: 2px 8px;
+  font-size: var(--font-lg);
+  line-height: 1;
+}
+
+.stepper button:first-child {
+  border-radius: var(--radius) 0 0 var(--radius);
+}
+
+.stepper button:last-child {
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.stepper input {
+  width: 3.5em;
+  border-right: none;
+  border-left: none;
+  border-radius: 0;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.side-panel .stepper input {
+  width: 3.5em;
+}
+
+@media (max-width: 720px), (max-height: 520px) {
+  .stepper button {
+    min-width: var(--touch);
+  }
+}
+
+/* ── 手機版全螢幕頁面 ── */
+.page {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) 0 env(safe-area-inset-left, 0px);
+  background: var(--panel);
+  animation: page-in 160ms ease-out;
+}
+
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  min-height: 52px;
+  padding: 4px var(--edge);
+  border-bottom: 1px solid var(--control);
+}
+
+.page-header h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.page-back {
+  padding: 0 12px;
+  border: none;
+  background: none;
+  font-size: 28px;
+  line-height: 1;
+}
+
+.page-body {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: var(--edge);
+}
+
+.page-body .side-panel-note {
+  padding: 10px var(--edge) 0;
+}
+
+.page-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--gap);
+  padding: 10px var(--edge) calc(10px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--control);
+  background: var(--panel);
+  font-size: var(--font);
+}
+
+.page-footer strong {
+  color: var(--accent);
+}
+
+.page-footer button.primary {
+  flex: 1 0 auto;
+}
+
+.tabs {
+  display: flex;
+  gap: 6px;
+  padding: 8px var(--edge);
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--control);
+}
+
+.tabs button {
+  flex: 0 0 auto;
+  border-radius: 999px;
+}
+
+/* ── 商品卡片 ── */
+.stock-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 10px var(--edge) 0;
+  list-style: none;
+}
+
+.stock-card {
+  border: 1px solid var(--control);
+  border-radius: var(--radius-lg);
+  background: var(--input-bg);
+}
+
+.stock-card.open {
+  border-color: var(--border);
+}
+
+.stock-card.locked {
+  opacity: 0.45;
+}
+
+.stock-card-summary {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: none;
+  text-align: left;
+  white-space: normal;
+}
+
+.stock-card-summary:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+.stock-card-name small,
+.stock-card-stock small,
+.stock-card-price small {
+  display: block;
+  font-size: var(--font-sm);
+  opacity: 0.6;
+}
+
+.stock-card-stock {
+  font-size: 13px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.stock-card-stock .ordering {
+  color: var(--accent);
+  opacity: 1;
+}
+
+.stock-card-price {
+  min-width: 3.5em;
+  font-size: var(--font-lg);
+  font-weight: 600;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.stock-card-price.cheap {
+  color: var(--positive);
+}
+
+.stock-card-price.pricey {
+  color: var(--negative);
+}
+
+.stock-card-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  padding: 0 12px 12px;
+}
+
+.stock-card-ref {
+  margin: 0;
+  font-size: 13px;
+  opacity: 0.7;
+}
+
+.stock-card-detail label,
+.stock-card-sale {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--gap);
+  font-size: var(--font);
+}
+
+.stock-card-sale .flash-sale-tiers button {
+  min-width: var(--touch);
+  padding: 4px 8px;
+  font-size: var(--font);
+}
+
+.page .rush-order {
+  max-height: none;
+  margin-top: var(--edge);
+}
+
+.page .rush-lines {
+  grid-template-columns: 1fr;
+}
+
+.stock-card-summary:hover:not(:disabled) {
+  background: none;
+}
