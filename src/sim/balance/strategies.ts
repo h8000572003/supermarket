@@ -22,9 +22,9 @@ export interface Strategy {
 /** 第一個選項 */
 export const firstOption = (): number => 0;
 
-/** 最便宜的選項（同價取前面的） */
+/** 最便宜的選項（同價取後面的：都不花錢時，後面的是「不處理」） */
 export function cheapestOption(incident: PendingIncident): number {
-  return incident.options.reduce((best, o, i, all) => (o.cost < (all[best] as typeof o).cost ? i : best), 0);
+  return incident.options.reduce((best, o, i, all) => (o.cost <= (all[best] as typeof o).cost ? i : best), 0);
 }
 
 /** 最花錢的選項（同價取後面的） */
@@ -176,7 +176,7 @@ export const overspend: Strategy = {
 };
 
 /**
- * 最差應對（守門測試用）：標準經營的店，但狀況一律選最花錢的選項，
+ * 最差應對（守門測試用）：標準經營的店，但狀況一律選最花錢的選項（都不花錢時選「不處理」），
  * 付不起時才選不花錢、帶負面效果的那個。
  */
 export const worstResponse: Strategy = {
@@ -185,7 +185,7 @@ export const worstResponse: Strategy = {
   chooseIncidentOption: costliestOption,
 };
 
-/** 標準經營的店，狀況一律選不花錢的選項（口碑扣分、少一位店員） */
+/** 標準經營的店，狀況一律選不花錢、不處理的選項（口碑扣分、少一位店員、團客不派工、不叫貨、不買出清） */
 export const neglectResponse: Strategy = {
   ...standard,
   name: '一律不處理',

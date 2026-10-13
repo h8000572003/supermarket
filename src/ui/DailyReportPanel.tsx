@@ -94,6 +94,7 @@ export function DailyReportPanel({ game }: { game: Game }) {
                 <li key={`${i.kind}-${i.minute}`}>
                   <span className="clock">{formatTime(i.minute)}</span> {i.name}：{i.optionLabel}
                   {i.cost > 0 && <span className="negative">（−{formatMoney(i.cost)}）</span>}
+                  {i.goods > 0 && <span className="negative">（進貨 −{formatMoney(i.goods)}）</span>}
                 </li>
               ))}
             </ul>

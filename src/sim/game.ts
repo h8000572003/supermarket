@@ -21,9 +21,10 @@ import {
   RUSH_LAST_ORDER_MINUTE,
   RUSH_ORDERS_PER_DAY,
   STANDARD_RUSH_TERMS,
+  freeRushTerms,
 } from './economy/rush-order';
 import type { RushOrder, RushOrderTerms } from './economy/rush-order';
-import { canAfford, incidentDefinition, scheduleIncidents } from './incidents/incidents';
+import { canAfford, incidentDefinition, optionGoods, scheduleIncidents } from './incidents/incidents';
 import type {
   IncidentContext,
   IncidentEffect,
@@ -247,13 +248,19 @@ export class Game {
   private readonly reservedSlots = new Set<string>();
   /** 營業中的派工標記（瞬時狀態，不存檔；打烊時清除） */
   private _dispatches: DispatchTarget[] = [];
+  /** 狀況自動派工的收銀台：到這一步之前即使隊伍清空也不解除（團客期間持續待命） */
+  private registerHolds = new Map<string, number>();
   private nextFixtureId = 1;
   private _version = 0;
   private readonly listeners = new Set<() => void>();
   private readonly eventListeners = new Set<(event: GameEvent) => void>();
   /** 今天還沒發生的狀況（依時刻排序） */
   private incidentQueue: ScheduledIncident[] = [];
-  private _pendingIncident: { readonly kind: IncidentKind; readonly minute: number } | null = null;
+  private _pendingIncident: ScheduledIncident | null = null;
+  /** 狀況造成的暫時來客倍率與結束的步數（打烊時清除） */
+  private arrivalSurge: { readonly multiplier: number; readonly untilStep: number } | null = null;
+  /** 狀況造成、今天剩下時間的類別需求倍率（打烊時清除） */
+  private categoryDemand: Partial<Record<CategoryId, number>> = {};
   /** 前一個營業日發生過的狀況種類（隔天不重複） */
   private previousIncidentKinds: readonly IncidentKind[] = [];
 
@@ -422,10 +429,27 @@ export class Game {
     return {
       kind: p.kind,
       name: def.name,
-      description: def.description,
+      description: def.description(p.params),
       minute: p.minute,
-      options: def.options.map((o) => ({ ...o, available: canAfford(this._funds, o.cost) })),
+      params: p.params,
+      options: def.options(p.params).map((o) => ({ ...o, available: canAfford(this._funds, o.cost) })),
     };
+  }
+
+  /** 目前的來客速率（人 / 遊戲小時）：時段曲線 × 口碑倍率 × 狀況的暫時來客倍率；營業時段以外為 0 */
+  get arrivalsPerHourNow(): number {
+    if (this._phase !== 'open') return 0;
+    return arrivalsPerHour(this.minuteOfDay) * arrivalMultiplier(this._reputation) * this.surgeMultiplier();
+  }
+
+  /** 今天該類別出現在購物清單的權重倍率（熱浪時飲料為 2）；打烊後恢復為 1 */
+  demandMultiplier(category: CategoryId): number {
+    return this.categoryDemand[category] ?? 1;
+  }
+
+  private surgeMultiplier(): number {
+    const surge = this.arrivalSurge;
+    return surge && this._step < surge.untilStep ? surge.multiplier : 1;
   }
 
   /** 今天已處理的狀況 */
@@ -723,6 +747,7 @@ export class Game {
     if (phase) return fail(phase);
     if (!this.isDispatched(target)) return fail('not-dispatched');
     this._dispatches = this._dispatches.filter((d) => !sameTarget(d, target));
+    if (target.kind === 'register') this.registerHolds.delete(target.registerId);
     if (target.kind === 'slot') {
       for (const agent of this.agents) {
         const t = agent.task;
@@ -770,7 +795,10 @@ export class Game {
   /** 清除已完成（或已無法完成）的派工標記 */
   private clearFinishedDispatches(): void {
     const remaining = this._dispatches.filter((d) => {
-      if (d.kind === 'register') return !this.checkout.isStaffedAndClear(d.registerId);
+      if (d.kind === 'register') {
+        const held = (this.registerHolds.get(d.registerId) ?? 0) > this._step;
+        return held || !this.checkout.isStaffedAndClear(d.registerId);
+      }
       if (this.slotIsFull(d.fixtureId, d.slotIndex)) return false;
       // 沒有店員在處理、倉庫也沒貨了：無法完成
       const productId = this.inventory.slot(d.fixtureId, d.slotIndex)?.productId;
@@ -779,6 +807,9 @@ export class Game {
     });
     if (remaining.length === this._dispatches.length) return;
     this._dispatches = remaining;
+    for (const id of this.registerHolds.keys()) {
+      if (!this.isDispatched({ kind: 'register', registerId: id })) this.registerHolds.delete(id);
+    }
     this.changed();
   }
 
@@ -791,11 +822,14 @@ export class Game {
     this.agents = this._staff.map((s) => new StaffAgent(s.id, BACKROOM_DOOR));
     this.reservedSlots.clear();
     this._dispatches = [];
+    this.registerHolds.clear();
     this.customers = [];
     this.pendingRush = [];
     this.rushOrdersUsed = 0;
     this.checkout = new Checkout(this.registerSpots(), (p) => this.layout.isWalkable(p));
     this._pendingIncident = null;
+    this.arrivalSurge = null;
+    this.categoryDemand = {};
     this.incidentQueue = scheduleIncidents(this.rng, this._day, this.previousIncidentKinds, this.incidentContext());
     this.emit({ type: 'store-opened' });
     this.changed();
@@ -808,25 +842,36 @@ export class Game {
     this.changed();
   }
 
-  /** 選擇等待中狀況的選項：立即支付費用並套用效果，遊戲以原本的速度繼續 */
+  /**
+   * 選擇等待中狀況的選項：立即支付費用並套用效果，遊戲以原本的速度繼續。
+   * 費用中屬於進貨的部分（免運費叫貨、出清的那一批）計入進貨成本，其餘計入狀況支出。
+   */
   resolveIncident(option: number): Result<IncidentRecord> {
     const phaseErr = phaseError(this._phase, 'open');
     if (phaseErr) return fail(phaseErr);
     const pending = this._pendingIncident;
     if (!pending) return fail('no-pending-incident');
     const def = incidentDefinition(pending.kind);
-    const chosen = def.options[option];
+    const chosen = def.options(pending.params)[option];
     if (!Number.isInteger(option) || !chosen) return fail('invalid-incident-option');
     if (!canAfford(this._funds, chosen.cost)) return fail('insufficient-funds');
-    this._funds -= chosen.cost;
-    for (const effect of chosen.effects) this.applyIncidentEffect(effect);
+    const goods = optionGoods(chosen);
+    // 會被拒絕的效果（叫貨）排在選項效果的最前面，被拒時尚未改變任何狀態
+    for (const effect of chosen.effects) {
+      const error = this.applyIncidentEffect(effect);
+      if (error) return fail(error);
+    }
+    const expense = chosen.cost - goods;
+    this._funds -= expense;
     const record: IncidentRecord = {
       kind: pending.kind,
       name: def.name,
       minute: pending.minute,
       option,
       optionLabel: chosen.label,
-      cost: chosen.cost,
+      cost: expense,
+      goods,
+      params: pending.params,
     };
     this.ledger.recordIncident(record);
     this._pendingIncident = null;
@@ -835,15 +880,56 @@ export class Game {
     return ok(record);
   }
 
-  private applyIncidentEffect(effect: IncidentEffect): void {
+  /** 套用狀況效果；被拒絕時回傳錯誤碼（只有叫貨會被拒） */
+  private applyIncidentEffect(effect: IncidentEffect): CommandError | null {
     switch (effect.type) {
       case 'reputation':
         this.ledger.incidentReputation += effect.delta;
-        return;
+        return null;
       case 'send-staff-home':
         for (let i = 0; i < effect.count; i++) this.sendStaffHome();
-        return;
+        return null;
+      case 'arrival-surge':
+        this.arrivalSurge = {
+          multiplier: effect.multiplier,
+          untilStep: this._step + Math.round(effect.minutes / MINUTES_PER_STEP),
+        };
+        return null;
+      case 'category-demand':
+        this.categoryDemand = { ...this.categoryDemand, [effect.category]: effect.multiplier };
+        return null;
+      case 'dispatch-busiest-register':
+        this.dispatchBusiestRegister(effect.minutes);
+        return null;
+      case 'free-rush-order': {
+        const r = this.placeRushOrder(effect.lines, freeRushTerms(effect.category));
+        return r.ok ? null : r.error;
+      }
+      case 'instant-delivery':
+        this.deliver({ lines: effect.lines });
+        this._funds -= effect.goods;
+        this.ledger.purchases += effect.goods;
+        return null;
     }
+  }
+
+  /**
+   * 狀況的自動派工：在還沒派工的收銀台中挑排隊人數最多的（同數取擺放順序在前的），
+   * 店員在接下來 minutes 遊戲分鐘內持續待命，之後隊伍清空才解除。
+   * 這是店長在狀況中明確選的，所以即使派工標記已達上限（2 個）仍會加上，不會擠掉店長自己的標記；
+   * 收銀台都已派工時不做任何事。
+   */
+  private dispatchBusiestRegister(minutes: number): void {
+    const candidates = this.layout
+      .list()
+      .filter((f) => f.kind === 'register' && !this.isDispatched({ kind: 'register', registerId: f.id }));
+    const busiest = candidates.reduce<Fixture | null>(
+      (best, f) => (!best || this.queueLength(f.id) > this.queueLength(best.id) ? f : best),
+      null,
+    );
+    if (!busiest) return;
+    this._dispatches = [...this._dispatches, { kind: 'register', registerId: busiest.id }];
+    this.registerHolds.set(busiest.id, this._step + Math.round(minutes / MINUTES_PER_STEP));
   }
 
   /** 一位店員提早下班：手上的貨退回倉庫、放下收銀與補貨工作；今天不再回來 */
@@ -861,7 +947,17 @@ export class Game {
       funds: this._funds,
       workingStaff: this._phase === 'open' ? this.agents.length : this._staff.length,
       registers: this.layout.list().filter((f) => f.kind === 'register').length,
+      displayedProducts: this.displayedProducts(),
     };
+  }
+
+  /** 已解鎖且有格位陳列的商品（依陳列順序、不重複） */
+  private displayedProducts(): string[] {
+    const ids = this.layout.list().flatMap((f) => this.inventory.slots(f.id).map((s) => s.productId));
+    return [...new Set(ids)].filter((id): id is string => {
+      const product = id ? productById(id) : undefined;
+      return !!product && this.unlocked.has(product.category);
+    });
   }
 
   /** 到了排定時刻的狀況發生（前提已不成立的略過）；回傳是否有狀況開始等待選擇 */
@@ -958,6 +1054,7 @@ export class Game {
     this.agents = [];
     this.reservedSlots.clear();
     this._dispatches = [];
+    this.registerHolds.clear();
     // 打烊時所有限時特價結束，隔天的售價維持原本設定
     this.flashSaleState.clear();
     this.ledger.rent = DAILY_RENT;
@@ -966,6 +1063,8 @@ export class Game {
     // 狀況效果最晚在打烊時結束
     this.incidentQueue = [];
     this._pendingIncident = null;
+    this.arrivalSurge = null;
+    this.categoryDemand = {};
 
     const reputationBefore = this._reputation;
     // 狀況造成的口碑變化與當天的平滑更新一起套用
@@ -1032,9 +1131,9 @@ export class Game {
     const minute = this.minuteOfDay;
     if (!this.customerArrivals) return;
     if (minute >= CLOSE_MINUTE - LAST_ENTRY_BEFORE_CLOSE || this.customers.length >= MAX_CUSTOMERS_IN_STORE) return;
-    const perStep = (arrivalsPerHour(minute) * arrivalMultiplier(this._reputation) * MINUTES_PER_STEP) / 60;
+    const perStep = (this.arrivalsPerHourNow * MINUTES_PER_STEP) / 60;
     if (!this.rng.chance(perStep)) return;
-    const list = rollShoppingList(this.rng, [...this.unlocked]);
+    const list = rollShoppingList(this.rng, [...this.unlocked], this.categoryDemand);
     const patience = this.rng.int(...PATIENCE_RANGE);
     this.customers.push(new CustomerAgent(`c${this.nextCustomerId++}`, list, patience, this.customerWorld));
     this.ledger.entered++;

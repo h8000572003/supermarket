@@ -284,6 +284,8 @@ describe('每日結算', () => {
       option: 1,
       optionLabel: '不理會',
       cost: 0,
+      goods: 0,
+      params: {},
     });
   });
 });

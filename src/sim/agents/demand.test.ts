@@ -32,6 +32,23 @@ describe('購物清單', () => {
   it('可販售類別只有一個時清單只有它', () => {
     expect(rollShoppingList(Rng.fromSeed(1), ['snack'])).toEqual(['snack']);
   });
+
+  it('類別需求倍率提高該類別出現在清單的機率（熱浪時飲料 ×2）', () => {
+    const share = (multiplier: Partial<Record<'drink', number>>) => {
+      const rng = Rng.fromSeed(9);
+      let drink = 0;
+      for (let i = 0; i < 2000; i++) {
+        // 只抽 1 個類別時，飲料的機率 = 權重比例
+        if (rollShoppingList(rng, ['drink', 'snack', 'noodle'], multiplier)[0] === 'drink') drink++;
+      }
+      return drink / 2000;
+    };
+    const normal = share({});
+    const doubled = share({ drink: 2 });
+    // 第一個抽到的類別：平常 5/10，加倍後 10/15
+    expect(normal).toBeCloseTo(0.5, 1);
+    expect(doubled).toBeCloseTo(2 / 3, 1);
+  });
 });
 
 describe('價格敏感度', () => {

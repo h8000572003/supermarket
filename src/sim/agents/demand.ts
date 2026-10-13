@@ -34,15 +34,23 @@ const CATEGORY_WEIGHT: Record<CategoryId, number> = {
   daily: 1,
 };
 
-/** 產生購物清單：從可販售的類別中抽 1–3 個不重複類別 */
-export function rollShoppingList(rng: Rng, available: readonly CategoryId[]): CategoryId[] {
+/**
+ * 產生購物清單：從可販售的類別中抽 1–3 個不重複類別。
+ * demandMultiplier 為各類別權重的倍率（例如熱浪時飲料 ×2）；未列出的類別為 1。
+ */
+export function rollShoppingList(
+  rng: Rng,
+  available: readonly CategoryId[],
+  demandMultiplier: Partial<Readonly<Record<CategoryId, number>>> = {},
+): CategoryId[] {
   const pool = [...available];
+  const weight = (c: CategoryId) => CATEGORY_WEIGHT[c] * (demandMultiplier[c] ?? 1);
   const size = Math.min(pool.length, rng.int(1, 3));
   const list: CategoryId[] = [];
   for (let i = 0; i < size; i++) {
-    const total = pool.reduce((s, c) => s + CATEGORY_WEIGHT[c], 0);
+    const total = pool.reduce((s, c) => s + weight(c), 0);
     let roll = rng.next() * total;
-    const index = pool.findIndex((c) => (roll -= CATEGORY_WEIGHT[c]) < 0);
+    const index = pool.findIndex((c) => (roll -= weight(c)) < 0);
     const [picked] = pool.splice(index === -1 ? pool.length - 1 : index, 1);
     if (picked) list.push(picked);
   }

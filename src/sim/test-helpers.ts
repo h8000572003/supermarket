@@ -1,15 +1,31 @@
 import { MAX_STEPS_PER_TICK, STEP_MS } from './clock/clock';
 import type { Game } from './game';
-import type { PendingIncident } from './incidents/incidents';
+import type { IncidentEffect, PendingIncident } from './incidents/incidents';
 
 /** 遇到狀況時選哪個選項（回傳選項索引） */
 export type IncidentChooser = (incident: PendingIncident, game: Game) => number;
 
-/** 預設：第一個付得起的選項 */
-export const firstAvailableOption: IncidentChooser = (incident) => incident.options.findIndex((o) => o.available);
+/** 會改變店內庫存或人手的效果；測試預設避開，讓狀況不干擾庫存與店員行為的斷言 */
+const INTRUSIVE_EFFECTS: readonly IncidentEffect['type'][] = [
+  'instant-delivery',
+  'free-rush-order',
+  'send-staff-home',
+  'dispatch-busiest-register',
+];
+
+/**
+ * 預設：第一個付得起、且不改變庫存與人手的選項（例如出清選拒絕、身體不適選加給）；
+ * 沒有這種選項時選第一個付得起的。
+ */
+export const calmOption: IncidentChooser = (incident) => {
+  const calm = incident.options.findIndex(
+    (o) => o.available && !o.effects.some((e) => INTRUSIVE_EFFECTS.includes(e.type)),
+  );
+  return calm >= 0 ? calm : incident.options.findIndex((o) => o.available);
+};
 
 /** 營業時段跑完，停在每日結算；途中發生的狀況以 choose 處理 */
-export function runOpenHours(game: Game, choose: IncidentChooser = firstAvailableOption): void {
+export function runOpenHours(game: Game, choose: IncidentChooser = calmOption): void {
   const r = game.openStore();
   if (!r.ok) throw new Error(r.error);
   while (game.phase === 'open') {
@@ -27,7 +43,7 @@ export function runOpenHours(game: Game, choose: IncidentChooser = firstAvailabl
 }
 
 /** 推進一次 tick；若有狀況等待選擇，先以 choose 處理（逐步推進營業時段的測試用，避免卡在等待選擇） */
-export function tickResolving(game: Game, realDtMs: number, choose: IncidentChooser = firstAvailableOption): void {
+export function tickResolving(game: Game, realDtMs: number, choose: IncidentChooser = calmOption): void {
   const incident = game.pendingIncident;
   if (incident) {
     const resolved = game.resolveIncident(choose(incident, game));

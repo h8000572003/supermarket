@@ -1,3 +1,4 @@
+import { optionGoods } from '../sim/incidents/incidents';
 import type { Controller } from './controller';
 import { useGameVersion } from './hooks';
 import { formatMoney, formatTime } from './messages';
@@ -33,6 +34,7 @@ export function IncidentDialog({ controller }: { controller: Controller }) {
                 {o.label} · {o.cost > 0 ? formatMoney(o.cost) : '免費'}
               </strong>
               <small>{o.available ? o.detail : `資金不足（需要 ${formatMoney(o.cost)}）`}</small>
+              {o.available && optionGoods(o) > 0 && <small>費用為商品金額，計入進貨成本</small>}
             </button>
           ))}
         </div>

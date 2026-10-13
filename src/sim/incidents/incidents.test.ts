@@ -1,26 +1,77 @@
 import { describe, expect, it } from 'vitest';
 import { Rng } from '../rng';
-import { INCIDENTS, INCIDENT_WINDOW, scheduleIncidents } from './incidents';
+import { INCIDENTS, INCIDENT_WINDOW, incidentDefinition, optionGoods, scheduleIncidents } from './incidents';
 import type { IncidentContext, IncidentDefinition, IncidentKind } from './incidents';
 
-const ctx: IncidentContext = { day: 2, funds: 10_000, workingStaff: 2, registers: 1 };
+const ctx: IncidentContext = {
+  day: 2,
+  funds: 10_000,
+  workingStaff: 2,
+  registers: 1,
+  displayedProducts: ['cola', 'water', 'chips'],
+};
 
 /** 測試用的假狀況（種類 id 借用字串） */
 function fake(kind: string, precondition: (c: IncidentContext) => boolean = () => true): IncidentDefinition {
   const free = { label: '不處理', detail: '', cost: 0, effects: [] };
-  return { kind: kind as IncidentKind, name: kind, description: '', precondition, options: [free, free] };
+  return {
+    kind: kind as IncidentKind,
+    name: kind,
+    description: () => '',
+    precondition,
+    options: () => [free, free],
+  };
 }
 
 describe('狀況定義', () => {
   it('每種狀況恰好 2 個選項，且至少一個不花錢（資金為負也能處理）', () => {
     for (const def of INCIDENTS) {
-      expect(def.options).toHaveLength(2);
-      expect(def.options.some((o) => o.cost === 0)).toBe(true);
+      for (let seed = 1; seed <= 5; seed++) {
+        const params = def.rollParams?.(Rng.fromSeed(seed), ctx) ?? {};
+        const options = def.options(params);
+        expect(options).toHaveLength(2);
+        expect(options.some((o) => o.cost === 0)).toBe(true);
+        expect(def.description(params)).not.toBe('');
+        // 費用至少涵蓋進貨的部分
+        for (const o of options) expect(o.cost).toBeGreaterThanOrEqual(optionGoods(o));
+      }
     }
   });
 
   it('種類 id 不重複', () => {
     expect(new Set(INCIDENTS.map((d) => d.kind)).size).toBe(INCIDENTS.length);
+  });
+});
+
+describe('狀況的前提與參數', () => {
+  it('團客來店需要店內有收銀台', () => {
+    const def = incidentDefinition('group-visit');
+    expect(def.precondition(ctx)).toBe(true);
+    expect(def.precondition({ ...ctx, registers: 0 })).toBe(false);
+  });
+
+  it('熱浪需要店裡有陳列飲料；免運費叫貨為每種陳列飲料各訂最低訂購量', () => {
+    const def = incidentDefinition('heat-wave');
+    expect(def.precondition({ ...ctx, displayedProducts: ['chips'] })).toBe(false);
+    const params = def.rollParams!(Rng.fromSeed(1), ctx);
+    expect(params.lines).toEqual([
+      { productId: 'cola', qty: 12 },
+      { productId: 'water', qty: 12 },
+    ]);
+    // 商品金額：可樂 12 × $15 + 礦泉水 12 × $7
+    expect(def.options(params)[0].cost).toBe(12 * 15 + 12 * 7);
+  });
+
+  it('供應商出清只挑店裡有陳列的商品；一批為最低訂購量 × 2、總價為進價 7 折', () => {
+    const def = incidentDefinition('supplier-clearance');
+    expect(def.precondition({ ...ctx, displayedProducts: [] })).toBe(false);
+    const picked = new Set<string>();
+    for (let seed = 1; seed <= 30; seed++) picked.add(def.rollParams!(Rng.fromSeed(seed), ctx).productId!);
+    expect([...picked].sort()).toEqual(['chips', 'cola', 'water']);
+    const [buy] = def.options({ productId: 'cola' });
+    // 可樂：最低訂購量 12 × 2 = 24 個，24 × $15 × 0.7 = $252
+    expect(buy.cost).toBe(252);
+    expect(buy.effects).toContainEqual({ type: 'instant-delivery', lines: [{ productId: 'cola', qty: 24 }], goods: 252 });
   });
 });
 
