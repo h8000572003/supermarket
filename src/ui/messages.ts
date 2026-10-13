@@ -9,6 +9,7 @@ export const ERROR_MESSAGES: Record<CommandError, string> = {
   'covers-access': '會壓住其他設施的取用格',
   unreachable: '會讓倉庫門或某些取用格無法從入口走到',
   'not-prep-phase': '只能在準備階段操作',
+  'not-open-hours': '只能在營業時段操作',
   'not-report-phase': '只能在每日結算時操作',
   'insufficient-funds': '資金不足',
   'unknown-fixture': '找不到這個設施',

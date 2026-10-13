@@ -45,6 +45,8 @@ export type CommandError =
   | PlacementError
   /** 只能在準備階段執行 */
   | 'not-prep-phase'
+  /** 只能在營業時段執行（限時特價、緊急叫貨等暫時性指令，見 ADR 0003） */
+  | 'not-open-hours'
   /** 只能在每日結算時執行 */
   | 'not-report-phase'
   /** 資金不足 */
@@ -74,6 +76,19 @@ export type Result<T = void> = { ok: true; value: T } | { ok: false; error: Comm
 
 const ok = <T>(value: T): Result<T> => ({ ok: true, value });
 const fail = (error: CommandError): Result<never> => ({ ok: false, error });
+
+/** 指令所需的階段：準備階段的指令，或營業時段的暫時性指令（ADR 0003） */
+export type CommandPhase = 'prep' | 'open';
+
+const PHASE_ERRORS: Record<CommandPhase, CommandError> = {
+  prep: 'not-prep-phase',
+  open: 'not-open-hours',
+};
+
+/** 共用的階段檢查：目前階段不是指令所需的階段時回傳錯誤碼，否則回傳 null */
+export function phaseError(current: Phase, required: CommandPhase): CommandError | null {
+  return current === required ? null : PHASE_ERRORS[required];
+}
 
 export const STARTING_FUNDS = 30_000;
 /** 每個營業日的租金 */
