@@ -207,6 +207,19 @@ select {
   padding: 10px 14px;
 }
 
+.side-panel-note {
+  margin: 0;
+  padding: 0 14px 8px;
+  font-size: 13px;
+  opacity: 0.8;
+}
+
+/* 營業中：售價與進貨單鎖定 */
+.side-panel.open-hours input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .side-panel h2 {
   margin: 0;
   font-size: 16px;

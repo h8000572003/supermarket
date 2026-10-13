@@ -1,19 +1,19 @@
 import { useState } from 'react';
 import { CATEGORIES, PRODUCTS } from '../sim/catalog/products';
 import { SHIPPING_FEE, orderTotal } from '../sim/economy/purchase-order';
-import { isOpeningDelivery } from '../sim/game';
+import { isOpeningDelivery, phaseError } from '../sim/game';
 import type { Controller } from './controller';
 import { useGameVersion } from './hooks';
 import { formatMoney } from './messages';
 
-/** 商品與進貨：調整售價、查看倉庫庫存、下進貨單 */
+/** 商品與進貨：調整售價、查看倉庫庫存、下進貨單；營業時段可開啟查看，但售價與進貨單鎖定 */
 export function StockPanel({ controller, onClose }: { controller: Controller; onClose: () => void }) {
   const { game, interaction } = controller;
   useGameVersion(game);
   const [qty, setQty] = useState<Record<string, number>>({});
   const [priceDraft, setPriceDraft] = useState<Record<string, string>>({});
 
-  const editable = game.phase === 'prep';
+  const editable = phaseError(game.phase, 'prep') === null;
   const lines = Object.entries(qty)
     .filter(([, q]) => q > 0)
     .map(([productId, q]) => ({ productId, qty: q }));
@@ -45,13 +45,18 @@ export function StockPanel({ controller, onClose }: { controller: Controller; on
     game.pendingOrders.flatMap((o) => o.lines).filter((l) => l.productId === productId).reduce((s, l) => s + l.qty, 0);
 
   return (
-    <div className="side-panel">
+    <div className={game.phase === 'open' ? 'side-panel open-hours' : 'side-panel'}>
       <header>
         <h2>商品與進貨</h2>
         <button onClick={onClose} aria-label="關閉">
           ✕
         </button>
       </header>
+      {game.phase === 'open' && (
+        <p className="side-panel-note" role="note">
+          營業中只能使用限時特價與緊急叫貨；售價與一般進貨單請在準備階段調整。
+        </p>
+      )}
       <table>
         <thead>
           <tr>

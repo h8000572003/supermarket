@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MAX_STEPS_PER_TICK, OPEN_HOURS_REAL_MS, OPEN_MINUTE, STEP_MS, STEPS_PER_DAY } from './clock/clock';
 import { productById } from './catalog/products';
-import { DAILY_RENT, Game, STARTING_FUNDS } from './game';
+import { DAILY_RENT, Game, STARTING_FUNDS, phaseError } from './game';
 import { playThroughDay, runOpenHours } from './test-helpers';
 
 const newGame = () => new Game({ seed: 1 });
@@ -43,6 +43,18 @@ describe('營業日循環', () => {
     for (const a of attempts()) expect(a).toEqual({ ok: false, error: 'not-prep-phase' });
     runUntilClosed(game);
     for (const a of attempts()) expect(a).toEqual({ ok: false, error: 'not-prep-phase' });
+  });
+});
+
+describe('指令的階段檢查', () => {
+  it('準備階段的指令只在準備階段通過', () => {
+    expect(phaseError('prep', 'prep')).toBeNull();
+    for (const phase of ['open', 'report', 'gameover'] as const) expect(phaseError(phase, 'prep')).toBe('not-prep-phase');
+  });
+
+  it('營業時段的指令只在營業時段通過', () => {
+    expect(phaseError('open', 'open')).toBeNull();
+    for (const phase of ['prep', 'report', 'gameover'] as const) expect(phaseError(phase, 'open')).toBe('not-open-hours');
   });
 });
 
