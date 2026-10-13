@@ -10,6 +10,7 @@ import { footprint, footprintTiles, slotAccessTile } from '../sim/store/geometry
 import type { Facing } from '../sim/store/geometry';
 import type { GridPoint } from '../sim/store/layout';
 import { TILE_HEIGHT, gridToScreen } from './iso';
+import { FRIDGE_SHELF_Z, SHELF_BOARD_Z } from './fixture-art';
 import type { ScreenPoint } from './iso';
 
 /**
@@ -31,7 +32,7 @@ const PRODUCT_ASPECT = 40 / 48;
 
 /**
  * 每種陳列櫃的兩層（一格設施放兩個格位）：商品底部離地的高度、商品高度、畫在離正面多深的平面。
- * 數值配合 Kenney 家具圖調整（場景座標的像素）。
+ * 層高取自 fixture-art 的層板高度（場景座標的像素）。
  */
 interface ShelfLevels {
   readonly levels: readonly [number, number];
@@ -44,8 +45,8 @@ interface ShelfLevels {
 }
 
 const LEVELS: Record<'shelf' | 'fridge', ShelfLevels> = {
-  shelf: { levels: [36, 15], itemHeight: 17, depth: 0.45, visibleFromBack: true, margin: 0.12 },
-  fridge: { levels: [48, 24], itemHeight: 19, depth: 0.04, visibleFromBack: false, margin: 0.18 },
+  shelf: { levels: SHELF_BOARD_Z, itemHeight: 16, depth: 0.2, visibleFromBack: true, margin: 0.12 },
+  fridge: { levels: FRIDGE_SHELF_Z, itemHeight: 19, depth: 0.04, visibleFromBack: false, margin: 0.18 },
 };
 
 /** 正面的那條邊（網格座標的兩端點） */
@@ -157,7 +158,7 @@ export function createStockItems(game: Game, fixture: Fixture, tile: GridPoint):
       const p = along(u);
       return [p.x, p.y - h];
     };
-    glass.poly([...corner(0.12, 18), ...corner(0.88, 18), ...corner(0.88, 80), ...corner(0.12, 80)]).fill({
+    glass.poly([...corner(0.1, 8), ...corner(0.9, 8), ...corner(0.9, 70), ...corner(0.1, 70)]).fill({
       color: 0xbfe6ff,
       alpha: 0.14,
     });

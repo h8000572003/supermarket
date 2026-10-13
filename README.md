@@ -50,7 +50,8 @@ src/
 
 ## 素材授權
 
-- 家具與紙箱圖：[Kenney Furniture Kit](https://kenney.nl/assets/furniture-kit)（CC0）
+- 收銀台與紙箱圖：[Kenney Furniture Kit](https://kenney.nl/assets/furniture-kit)（CC0）
+- 一般貨架、冷藏櫃與商品圖：本專案自繪（貨架與冷藏櫃以程式繪製，商品圖在 `public/assets/products/`）
 - 音效：[Kenney Interface Sounds](https://kenney.nl/assets/interface-sounds)、[Kenney UI Audio](https://kenney.nl/assets/ui-audio)（CC0）
 
 各素材資料夾內附原始授權檔。音效為 ogg 格式，較舊的 Safari 可能無法播放（只會沒有聲音，不影響遊戲）。

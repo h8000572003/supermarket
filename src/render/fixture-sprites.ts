@@ -5,10 +5,11 @@ import type { FixtureKind } from '../sim/catalog/fixtures';
 import { footprint, footprintTiles, rotateClockwise } from '../sim/store/geometry';
 import type { Facing, Placement } from '../sim/store/geometry';
 import { TILE_WIDTH, gridToScreen } from './iso';
+import { drawFridgeTile, drawShelfTile } from './fixture-art';
 
 /**
- * 設施外觀：Kenney Furniture Kit（CC0）的等角 PNG，每格一張。
- * 換素材時只需改這個檔案。
+ * 設施外觀：一般貨架與冷藏櫃由 fixture-art 以程式繪製（與商品圖同風格）；
+ * 收銀台仍用 Kenney Furniture Kit（CC0）的等角 PNG，每格一張。換素材時只需改這兩個檔案。
  */
 const BASE = `${import.meta.env.BASE_URL}assets/kenney-furniture/`;
 
@@ -16,8 +17,6 @@ type Suffix = 'NE' | 'NW' | 'SE' | 'SW';
 
 /** 一般家具：檔名後綴即正面在畫面上的方向 */
 const STANDARD: Record<Facing, Suffix> = { north: 'NE', east: 'SE', south: 'SW', west: 'NW' };
-/** kitchenFridge 的玻璃門不在模型正面：依畫面上玻璃門所在的面挑圖 */
-const GLASS_FRIDGE: Record<Facing, Suffix> = { north: 'SE', east: 'NE', south: 'NW', west: 'SW' };
 
 interface Layer {
   readonly model: string;
@@ -30,9 +29,7 @@ interface Layer {
   readonly size?: number;
 }
 
-const LOOKS: Record<FixtureKind, readonly Layer[]> = {
-  shelf: [{ model: 'bookcaseOpenLow', suffixes: STANDARD }],
-  fridge: [{ model: 'kitchenFridge', suffixes: GLASS_FRIDGE }],
+const LOOKS: Partial<Record<FixtureKind, readonly Layer[]>> = {
   register: [
     { model: 'kitchenBar', suffixes: STANDARD },
     { model: 'computerScreen', suffixes: STANDARD, turn: 2, lift: 34, size: 0.5 },
@@ -44,7 +41,7 @@ const FILL = 0.92;
 export async function loadFixtureTextures(): Promise<void> {
   const urls = new Set<string>();
   for (const layers of Object.values(LOOKS)) {
-    for (const layer of layers) {
+    for (const layer of layers ?? []) {
       for (const suffix of Object.values(layer.suffixes)) urls.add(`${BASE}${layer.model}_${suffix}.png`);
     }
   }
@@ -78,8 +75,16 @@ export function createFixtureSprites(kind: FixtureKind, placement: Placement, st
   const tiles = footprintTiles(footprint(FIXTURES[kind], placement));
   return tiles.map((tile) => {
     const c = new Container();
+    if (kind === 'shelf' || kind === 'fridge') {
+      const art = kind === 'shelf' ? drawShelfTile(tile) : drawFridgeTile(tile, placement.facing);
+      art.tint = TINT[style];
+      art.alpha = ALPHA[style];
+      c.addChild(art);
+      c.zIndex = (tile.x + tile.y) * 10;
+      return c;
+    }
     const bottom = gridToScreen(tile.x + 1, tile.y + 1);
-    for (const layer of LOOKS[kind]) {
+    for (const layer of LOOKS[kind] ?? []) {
       const tex = texture(layer, placement.facing);
       const s = new Sprite(tex);
       s.anchor.set(0.5, 1);
