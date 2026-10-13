@@ -62,6 +62,7 @@ export function App({ controller, sounds }: { controller: Controller; sounds: So
         const price = controller.game.salePrice(e.productId);
         controller.interaction.update({
           message: `限時特價結束：${product?.name ?? e.productId} 恢復售價 ${formatMoney(price ?? 0)}`,
+          messageKind: 'info',
         });
       }),
     [controller],
@@ -87,7 +88,7 @@ export function App({ controller, sounds }: { controller: Controller; sounds: So
         onOpenStock={() => toggle('stock')}
         onOpenMilestones={() => toggle('milestones')}
       />
-      <BuildToolbar controller={controller} />
+      <BuildToolbar controller={controller} onOpenStock={() => toggle('stock')} />
       {narrow && <FixtureSheet controller={controller} scene={scene} />}
       {panel === 'stock' && <StockPanel controller={controller} onClose={() => setPanel(null)} />}
       {panel === 'milestones' && <MilestonesPanel game={controller.game} onClose={() => setPanel(null)} />}

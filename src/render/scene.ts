@@ -57,7 +57,7 @@ const STORE_BOUNDS: StoreBounds = {
 function viewportOf(app: Application): Viewport {
   const { width, height } = app.screen;
   const reserve = matches(LANDSCAPE_PHONE_QUERY)
-    ? { top: 56, right: 112, bottom: 8, left: 8 }
+    ? { top: 56, right: 164, bottom: 8, left: 8 }
     : matches(NARROW_QUERY)
       ? { top: 64, right: 0, bottom: 150, left: 0 }
       : { top: 72, right: 0, bottom: 140, left: 0 };
