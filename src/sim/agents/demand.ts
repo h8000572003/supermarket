@@ -57,3 +57,29 @@ export function purchaseProbability(salePrice: number, suggestedPrice: number): 
   const markup = salePrice / suggestedPrice - 1;
   return Math.min(1, Math.max(0, 1 - PRICE_SENSITIVITY * markup));
 }
+
+/** 一次無扣分、照建議售價的購物的滿意度 */
+export const BASE_SATISFACTION = 85;
+
+/** 整次購物的折扣加分上限 */
+export const MAX_DISCOUNT_BONUS = 15;
+
+/** 售價比建議售價每便宜 1%，該件商品加 0.5 分 */
+const DISCOUNT_BONUS_RATE = 50;
+
+/** 單件商品的折扣加分：依低於建議售價的幅度；不低於建議售價時為 0 */
+export function discountBonus(salePrice: number, suggestedPrice: number): number {
+  return Math.max(0, 1 - salePrice / suggestedPrice) * DISCOUNT_BONUS_RATE;
+}
+
+/** 結帳顧客的滿意度：基準加折扣加分（有上限），減去缺貨、嫌貴、排隊等扣分，限制在 0–100 */
+export function checkoutSatisfaction(
+  items: readonly { readonly salePrice: number; readonly suggestedPrice: number }[],
+  penalty: number,
+): number {
+  const bonus = items.reduce((sum, i) => sum + discountBonus(i.salePrice, i.suggestedPrice), 0);
+  return clampSatisfaction(BASE_SATISFACTION + Math.min(MAX_DISCOUNT_BONUS, bonus) - penalty);
+}
+
+/** 滿意度限制在 0–100 */
+export const clampSatisfaction = (n: number) => Math.min(100, Math.max(0, n));

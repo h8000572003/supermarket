@@ -51,9 +51,9 @@ export const MILESTONES: readonly Milestone[] = [
   {
     id: 'good-reputation',
     name: '街坊好評',
-    goal: '口碑達 65',
+    goal: '口碑達 58',
     unlocks: 'daily',
-    progress: (c) => ratio(c.reputation, 65),
+    progress: (c) => ratio(c.reputation, 58),
   },
   {
     id: 'busy-day',

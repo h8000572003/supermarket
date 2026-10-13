@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { Rng } from '../rng';
-import { arrivalsPerHour, purchaseProbability, rollShoppingList } from './demand';
+import {
+  BASE_SATISFACTION,
+  MAX_DISCOUNT_BONUS,
+  arrivalsPerHour,
+  checkoutSatisfaction,
+  discountBonus,
+  purchaseProbability,
+  rollShoppingList,
+} from './demand';
 
 describe('來客曲線', () => {
   it('午餐尖峰高於下午離峰，深夜最低', () => {
@@ -36,5 +44,44 @@ describe('價格敏感度', () => {
     expect(purchaseProbability(25, 20)).toBeCloseTo(0.5);
     expect(purchaseProbability(30, 20)).toBe(0);
     expect(purchaseProbability(60, 20)).toBe(0);
+  });
+});
+
+describe('滿意度', () => {
+  const at = (salePrice: number, suggestedPrice = 100) => ({ salePrice, suggestedPrice });
+
+  it('無扣分、照建議售價的購物為 85', () => {
+    expect(BASE_SATISFACTION).toBe(85);
+    expect(checkoutSatisfaction([at(100), at(100)], 0)).toBe(85);
+  });
+
+  it('售價不低於建議售價時沒有折扣加分', () => {
+    expect(discountBonus(100, 100)).toBe(0);
+    expect(discountBonus(120, 100)).toBe(0);
+    expect(checkoutSatisfaction([at(120)], 0)).toBe(85);
+  });
+
+  it('折扣越深加分越多', () => {
+    expect(discountBonus(90, 100)).toBeGreaterThan(0);
+    expect(discountBonus(80, 100)).toBeGreaterThan(discountBonus(90, 100));
+    expect(discountBonus(70, 100)).toBeGreaterThan(discountBonus(80, 100));
+  });
+
+  it('每件折扣商品都有貢獻：全面降價高於只降一項', () => {
+    const one = checkoutSatisfaction([at(90), at(100)], 0);
+    const all = checkoutSatisfaction([at(90), at(90)], 0);
+    expect(one).toBeGreaterThan(85);
+    expect(all).toBeGreaterThan(one);
+  });
+
+  it('整次購物的折扣加分上限 15', () => {
+    expect(MAX_DISCOUNT_BONUS).toBe(15);
+    expect(checkoutSatisfaction([at(10), at(10), at(10)], 0)).toBe(100);
+    expect(checkoutSatisfaction([at(10), at(10), at(10)], 20)).toBe(80);
+  });
+
+  it('與扣分組合後限制在 0–100', () => {
+    expect(checkoutSatisfaction([at(90)], 30)).toBe(85 + discountBonus(90, 100) - 30);
+    expect(checkoutSatisfaction([at(100)], 200)).toBe(0);
   });
 });
