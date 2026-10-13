@@ -6,9 +6,9 @@
 
 **Blocked by:** 03, 06
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] 直向時每日結算內容可捲動，「進入下一天」始終可見
-- [ ] 狀況抽屜無法用下拉或點背景關閉，選擇選項後遊戲才繼續
-- [ ] 三種尺寸（iPhone 13 直向、iPhone 13 橫向、1440×900 桌機）的 Playwright 截圖符合預期
-- [ ] `npm test`、`npm run lint`、`npm run build` 通過
+- [x] 直向時每日結算內容可捲動，「進入下一天」始終可見
+- [x] 狀況抽屜無法用下拉或點背景關閉，選擇選項後遊戲才繼續
+- [x] 三種尺寸（iPhone 13 直向、iPhone 13 橫向、1440×900 桌機）的 Playwright 截圖符合預期
+- [x] `npm test`、`npm run lint`、`npm run build` 通過

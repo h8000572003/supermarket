@@ -781,6 +781,7 @@ button {
 .sheet-backdrop {
   position: fixed;
   inset: 0;
+  z-index: 9;
   background: var(--backdrop);
   pointer-events: auto;
 }
@@ -1371,4 +1372,40 @@ button {
 
 .stock-card-summary:hover:not(:disabled) {
   background: none;
+}
+
+/* ── 手機版每日結算與狀況 ── */
+.report-page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px var(--edge) 0;
+}
+
+.report-page section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.report-page h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  opacity: 0.6;
+}
+
+.page-footer > button.primary:only-child {
+  min-height: 48px;
+  font-size: var(--font-lg);
+}
+
+.incident-sheet p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.incident-sheet .incident-options button {
+  min-height: 56px;
 }

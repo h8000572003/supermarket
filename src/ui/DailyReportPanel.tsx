@@ -3,13 +3,16 @@ import type { CategoryId } from '../sim/catalog/products';
 import type { Game } from '../sim/game';
 import { BANKRUPTCY_DAYS, MILESTONES } from '../sim/progress/progress';
 import type { DailyReport } from '../sim/report/daily-report';
+import { FullScreenPage } from './FullScreenPage';
 import { useGameVersion } from './hooks';
+import { useNarrow } from './media';
 import { formatMoney, formatTime } from './messages';
 import { startNewGame } from './new-game';
 
 /** 每日結算畫面；破產時改為結束畫面 */
 export function DailyReportPanel({ game }: { game: Game }) {
   useGameVersion(game);
+  const narrow = useNarrow();
   const report = game.lastReport;
   if ((game.phase !== 'report' && game.phase !== 'gameover') || !report) return null;
   const p = report.progress;
@@ -21,142 +24,158 @@ export function DailyReportPanel({ game }: { game: Game }) {
     .sort((a, b) => b[1] - a[1]);
   const repDelta = p.reputationAfter - p.reputationBefore;
 
+  const title = p.bankrupt ? '破產了' : `第 ${report.day} 天 每日結算`;
+  const next = p.bankrupt ? (
+    <button className="primary" onClick={startNewGame}>
+      重新開始
+    </button>
+  ) : (
+    <button className="primary" onClick={() => game.startNextDay()}>
+      開始第 {report.day + 1} 天
+    </button>
+  );
+
+  const body = (
+    <>
+      {p.bankrupt && (
+        <p className="report-alert">
+          資金連續 {BANKRUPTCY_DAYS} 天為負，便利商店經營到第 {report.day} 天為止。
+        </p>
+      )}
+
+      {p.milestonesReached.map((id) => {
+        const m = MILESTONES.find((x) => x.id === id);
+        if (!m) return null;
+        return (
+          <p key={id} className="report-milestone">
+            達成里程碑「{m.name}」：{m.goal}
+            {m.unlocks ? `，解鎖${CATEGORIES[m.unlocks].name}！` : '！'}
+          </p>
+        );
+      })}
+
+      <section>
+        <h3>收支</h3>
+        <dl className="report">
+          <dt>營收</dt>
+          <dd className="positive">{formatMoney(report.revenue)}</dd>
+          <dt>進貨支出</dt>
+          <dd>{formatExpense(report.purchases)}</dd>
+          <dt>緊急叫貨運費</dt>
+          <dd>{formatExpense(report.rushShipping)}</dd>
+          {report.fixtures !== 0 && (
+            <>
+              <dt>設施購置（扣除出售回收）</dt>
+              <dd>{report.fixtures > 0 ? formatExpense(report.fixtures) : `+${formatMoney(-report.fixtures)}`}</dd>
+            </>
+          )}
+          <dt>租金</dt>
+          <dd>{formatExpense(report.rent)}</dd>
+          <dt>店員日薪</dt>
+          <dd>{formatExpense(report.wages)}</dd>
+          {report.incidents.length > 0 && (
+            <>
+              <dt>狀況支出</dt>
+              <dd>{formatExpense(report.incidentCosts)}</dd>
+            </>
+          )}
+          <dt className="total">淨利</dt>
+          <dd className={`total ${net < 0 ? 'negative' : 'positive'}`}>{formatSigned(net)}</dd>
+          <dt>目前資金</dt>
+          <dd className={report.fundsAtEnd < 0 ? 'negative' : ''}>{formatMoney(report.fundsAtEnd)}</dd>
+          {wasteCost > 0 && (
+            <>
+              <dt>報廢損失（已含在進貨）</dt>
+              <dd>{formatMoney(wasteCost)}</dd>
+            </>
+          )}
+        </dl>
+        {!p.bankrupt && p.negativeDays > 0 && (
+          <p className="report-alert">
+            資金已連續 {p.negativeDays} 天為負；連續 {BANKRUPTCY_DAYS} 天就會破產。
+          </p>
+        )}
+      </section>
+
+      {report.incidents.length > 0 && (
+        <section>
+          <h3>今日狀況</h3>
+          <ul className="report-incidents">
+            {report.incidents.map((i) => (
+              <li key={`${i.kind}-${i.minute}`}>
+                <span className="clock">{formatTime(i.minute)}</span> {i.name}：{i.optionLabel}
+                {i.cost > 0 && <span className="negative">（−{formatMoney(i.cost)}）</span>}
+                {i.goods > 0 && <span className="negative">（進貨 −{formatMoney(i.goods)}）</span>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <section>
+        <h3>顧客</h3>
+        <dl className="report">
+          <dt>來客 / 結帳</dt>
+          <dd>
+            {c.entered} / {c.served} 人
+          </dd>
+          <dt>空手離開（沒賣、缺貨或嫌貴）</dt>
+          <dd>{c.leftEmpty} 人</dd>
+          <dt>排隊太久放棄</dt>
+          <dd>{c.abandoned} 人</dd>
+          <dt>平均滿意度</dt>
+          <dd>{c.avgSatisfaction === null ? '—' : Math.round(c.avgSatisfaction)}</dd>
+          <dt>口碑</dt>
+          <dd>
+            {Math.round(p.reputationAfter)}{' '}
+            {Math.abs(repDelta) < 0.05 ? (
+              <span>（持平）</span>
+            ) : (
+              <span className={repDelta < 0 ? 'negative' : 'positive'}>
+                （{repDelta > 0 ? '+' : '−'}
+                {Math.abs(repDelta).toFixed(1)}）
+              </span>
+            )}
+          </dd>
+        </dl>
+      </section>
+
+      <section>
+        <h3>各類別銷量</h3>
+        <CategorySales report={report} />
+        {stockoutRanking.length > 0 && (
+          <p className="report-note">
+            缺貨最多：
+            {stockoutRanking
+              .slice(0, 3)
+              .map(([id, n]) => `${CATEGORIES[id].name} ${n} 次`)
+              .join('、')}
+          </p>
+        )}
+        {report.waste.length > 0 && (
+          <p className="report-note">
+            今天開店前報廢：
+            {report.waste.map((w) => `${productById(w.productId)?.name} ${w.qty} 個`).join('、')}
+          </p>
+        )}
+      </section>
+    </>
+  );
+
+  // 手機版：全螢幕頁面，「開始下一天」固定在底部
+  if (narrow) {
+    return (
+      <FullScreenPage title={title} label={`第 ${report.day} 天每日結算`} footer={next}>
+        <div className="report-page">{body}</div>
+      </FullScreenPage>
+    );
+  }
   return (
     <div className="modal-backdrop">
       <div className="modal report-modal" role="dialog" aria-label={`第 ${report.day} 天每日結算`}>
-        <h2>{p.bankrupt ? '破產了' : `第 ${report.day} 天 每日結算`}</h2>
-
-        {p.bankrupt && (
-          <p className="report-alert">
-            資金連續 {BANKRUPTCY_DAYS} 天為負，便利商店經營到第 {report.day} 天為止。
-          </p>
-        )}
-
-        {p.milestonesReached.map((id) => {
-          const m = MILESTONES.find((x) => x.id === id);
-          if (!m) return null;
-          return (
-            <p key={id} className="report-milestone">
-              達成里程碑「{m.name}」：{m.goal}
-              {m.unlocks ? `，解鎖${CATEGORIES[m.unlocks].name}！` : '！'}
-            </p>
-          );
-        })}
-
-        <section>
-          <h3>收支</h3>
-          <dl className="report">
-            <dt>營收</dt>
-            <dd className="positive">{formatMoney(report.revenue)}</dd>
-            <dt>進貨支出</dt>
-            <dd>{formatExpense(report.purchases)}</dd>
-            <dt>緊急叫貨運費</dt>
-            <dd>{formatExpense(report.rushShipping)}</dd>
-            {report.fixtures !== 0 && (
-              <>
-                <dt>設施購置（扣除出售回收）</dt>
-                <dd>{report.fixtures > 0 ? formatExpense(report.fixtures) : `+${formatMoney(-report.fixtures)}`}</dd>
-              </>
-            )}
-            <dt>租金</dt>
-            <dd>{formatExpense(report.rent)}</dd>
-            <dt>店員日薪</dt>
-            <dd>{formatExpense(report.wages)}</dd>
-            {report.incidents.length > 0 && (
-              <>
-                <dt>狀況支出</dt>
-                <dd>{formatExpense(report.incidentCosts)}</dd>
-              </>
-            )}
-            <dt className="total">淨利</dt>
-            <dd className={`total ${net < 0 ? 'negative' : 'positive'}`}>{formatSigned(net)}</dd>
-            <dt>目前資金</dt>
-            <dd className={report.fundsAtEnd < 0 ? 'negative' : ''}>{formatMoney(report.fundsAtEnd)}</dd>
-            {wasteCost > 0 && (
-              <>
-                <dt>報廢損失（已含在進貨）</dt>
-                <dd>{formatMoney(wasteCost)}</dd>
-              </>
-            )}
-          </dl>
-          {!p.bankrupt && p.negativeDays > 0 && (
-            <p className="report-alert">
-              資金已連續 {p.negativeDays} 天為負；連續 {BANKRUPTCY_DAYS} 天就會破產。
-            </p>
-          )}
-        </section>
-
-        {report.incidents.length > 0 && (
-          <section>
-            <h3>今日狀況</h3>
-            <ul className="report-incidents">
-              {report.incidents.map((i) => (
-                <li key={`${i.kind}-${i.minute}`}>
-                  <span className="clock">{formatTime(i.minute)}</span> {i.name}：{i.optionLabel}
-                  {i.cost > 0 && <span className="negative">（−{formatMoney(i.cost)}）</span>}
-                  {i.goods > 0 && <span className="negative">（進貨 −{formatMoney(i.goods)}）</span>}
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-
-        <section>
-          <h3>顧客</h3>
-          <dl className="report">
-            <dt>來客 / 結帳</dt>
-            <dd>
-              {c.entered} / {c.served} 人
-            </dd>
-            <dt>空手離開（沒賣、缺貨或嫌貴）</dt>
-            <dd>{c.leftEmpty} 人</dd>
-            <dt>排隊太久放棄</dt>
-            <dd>{c.abandoned} 人</dd>
-            <dt>平均滿意度</dt>
-            <dd>{c.avgSatisfaction === null ? '—' : Math.round(c.avgSatisfaction)}</dd>
-            <dt>口碑</dt>
-            <dd>
-              {Math.round(p.reputationAfter)}{' '}
-              {Math.abs(repDelta) < 0.05 ? (
-                <span>（持平）</span>
-              ) : (
-                <span className={repDelta < 0 ? 'negative' : 'positive'}>
-                  （{repDelta > 0 ? '+' : '−'}
-                  {Math.abs(repDelta).toFixed(1)}）
-                </span>
-              )}
-            </dd>
-          </dl>
-        </section>
-
-        <section>
-          <h3>各類別銷量</h3>
-          <CategorySales report={report} />
-          {stockoutRanking.length > 0 && (
-            <p className="report-note">
-              缺貨最多：
-              {stockoutRanking
-                .slice(0, 3)
-                .map(([id, n]) => `${CATEGORIES[id].name} ${n} 次`)
-                .join('、')}
-            </p>
-          )}
-          {report.waste.length > 0 && (
-            <p className="report-note">
-              今天開店前報廢：{report.waste.map((w) => `${productById(w.productId)?.name} ${w.qty} 個`).join('、')}
-            </p>
-          )}
-        </section>
-
-        {p.bankrupt ? (
-          <button className="primary" onClick={startNewGame}>
-            重新開始
-          </button>
-        ) : (
-          <button className="primary" onClick={() => game.startNextDay()}>
-            開始第 {report.day + 1} 天
-          </button>
-        )}
+        <h2>{title}</h2>
+        {body}
+        {next}
       </div>
     </div>
   );
