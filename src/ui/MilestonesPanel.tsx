@@ -1,21 +1,17 @@
 import { CATEGORIES } from '../sim/catalog/products';
 import type { Game } from '../sim/game';
 import { MILESTONES } from '../sim/progress/progress';
+import { BottomSheet } from './BottomSheet';
 import { useGameVersion } from './hooks';
+import { useNarrow } from './media';
 
 /** 里程碑與進度 */
 export function MilestonesPanel({ game, onClose }: { game: Game; onClose: () => void }) {
   useGameVersion(game);
+  const narrow = useNarrow();
   const ctx = game.milestoneContext;
-  return (
-    <div className="side-panel milestones-panel">
-      <header>
-        <h2>經營目標</h2>
-        <button onClick={onClose} aria-label="關閉">
-          ✕
-        </button>
-      </header>
-      <ul className="milestones">
+  const list = (
+    <ul className="milestones">
         {MILESTONES.map((m) => {
           const done = game.isMilestoneAchieved(m.id);
           const progress = done ? 1 : m.progress(ctx);
@@ -35,7 +31,24 @@ export function MilestonesPanel({ game, onClose }: { game: Game; onClose: () => 
             </li>
           );
         })}
-      </ul>
+    </ul>
+  );
+  if (narrow) {
+    return (
+      <BottomSheet label="經營目標" title={<h2>經營目標</h2>} onClose={onClose} size="tall">
+        {list}
+      </BottomSheet>
+    );
+  }
+  return (
+    <div className="side-panel milestones-panel">
+      <header>
+        <h2>經營目標</h2>
+        <button onClick={onClose} aria-label="關閉">
+          ✕
+        </button>
+      </header>
+      {list}
     </div>
   );
 }

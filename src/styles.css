@@ -761,3 +761,132 @@ button {
   font-size: 22px;
   line-height: 1;
 }
+
+/* ── 手機版抽屜：直向從底部、橫向從右側滑出 ── */
+.sheet-backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--backdrop);
+}
+
+.sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: 50%;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  animation: sheet-up 160ms ease-out;
+}
+
+.sheet-tall {
+  max-height: 85%;
+}
+
+.sheet-header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  min-height: var(--touch);
+  padding: 10px var(--edge) 6px;
+  touch-action: none;
+}
+
+.sheet-header h2 {
+  margin: 0;
+  font-size: var(--font-lg);
+}
+
+.sheet-handle {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  width: 36px;
+  height: 4px;
+  margin-left: -18px;
+  border-radius: 2px;
+  background: var(--border);
+}
+
+.sheet-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.sheet-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  padding: 0 var(--edge) var(--edge);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.sheet-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--gap);
+}
+
+.sheet .panel {
+  padding: 0;
+  background: none;
+}
+
+.sheet .slot-panel {
+  grid-template-columns: 1fr;
+}
+
+.sheet .slot {
+  display: grid;
+  grid-template-columns: 4em 1fr 3.5em;
+}
+
+.sheet .slot select {
+  min-width: 0;
+}
+
+.sheet .slot-stock {
+  text-align: right;
+}
+
+.sheet .milestones {
+  padding: 4px 0 var(--edge);
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes sheet-left {
+  from {
+    transform: translateX(100%);
+  }
+}
+
+@media (orientation: landscape) and (max-height: 520px) {
+  .sheet,
+  .sheet-tall {
+    top: 0;
+    left: auto;
+    width: 40%;
+    min-width: 300px;
+    max-height: none;
+    padding-right: env(safe-area-inset-right, 0px);
+    padding-bottom: 0;
+    border-radius: var(--radius-xl) 0 0 var(--radius-xl);
+    animation-name: sheet-left;
+  }
+
+  .sheet-handle {
+    display: none;
+  }
+}

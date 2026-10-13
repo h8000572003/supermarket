@@ -4,11 +4,13 @@ import { createStoreScene } from './render/scene';
 import type { StoreScene } from './render/scene';
 import { BuildToolbar } from './ui/BuildToolbar';
 import { DailyReportPanel } from './ui/DailyReportPanel';
+import { FixtureSheet } from './ui/FixtureSheet';
 import type { Controller } from './ui/controller';
 import { Hud } from './ui/Hud';
 import { IncidentDialog } from './ui/IncidentDialog';
 import { MilestonesPanel } from './ui/MilestonesPanel';
 import { StockPanel } from './ui/StockPanel';
+import { useNarrow } from './ui/media';
 import { formatMoney } from './ui/messages';
 import { productById } from './sim/catalog/products';
 
@@ -16,6 +18,7 @@ export function App({ controller, sounds }: { controller: Controller; sounds: So
   const hostRef = useRef<HTMLDivElement>(null);
   const [panel, setPanel] = useState<'stock' | 'milestones' | null>(null);
   const [scene, setScene] = useState<StoreScene | null>(null);
+  const narrow = useNarrow();
   const toggle = (p: 'stock' | 'milestones') => setPanel((cur) => (cur === p ? null : p));
 
   useEffect(() => {
@@ -85,6 +88,7 @@ export function App({ controller, sounds }: { controller: Controller; sounds: So
         onOpenMilestones={() => toggle('milestones')}
       />
       <BuildToolbar controller={controller} />
+      {narrow && <FixtureSheet controller={controller} scene={scene} />}
       {panel === 'stock' && <StockPanel controller={controller} onClose={() => setPanel(null)} />}
       {panel === 'milestones' && <MilestonesPanel game={controller.game} onClose={() => setPanel(null)} />}
       <IncidentDialog controller={controller} />

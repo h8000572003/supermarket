@@ -1,8 +1,10 @@
 import { FIXTURES, FIXTURE_KINDS } from '../sim/catalog/fixtures';
-import { DAILY_WAGE, MAX_STAFF, sellRefund } from '../sim/game';
+import { DAILY_WAGE, MAX_STAFF } from '../sim/game';
 import type { Controller } from './controller';
 import { useGameVersion, useInteraction } from './hooks';
 import { DispatchPanel } from './DispatchPanel';
+import { FixtureActions } from './FixtureSheet';
+import { useNarrow } from './media';
 import { SlotPanel } from './SlotPanel';
 import { formatMoney } from './messages';
 
@@ -10,7 +12,9 @@ export function BuildToolbar({ controller }: { controller: Controller }) {
   const { game, interaction } = controller;
   useGameVersion(game);
   const { tool, selectedId, message } = useInteraction(interaction);
-  const selected = selectedId ? game.fixture(selectedId) : undefined;
+  const narrow = useNarrow();
+  // 手機版的設施面板改由 FixtureSheet 以抽屜呈現
+  const selected = selectedId && !narrow ? game.fixture(selectedId) : undefined;
 
   if (game.phase !== 'prep') {
     const open = game.phase === 'open';
@@ -42,11 +46,7 @@ export function BuildToolbar({ controller }: { controller: Controller }) {
       {selected && tool.mode === 'select' && (
         <div className="panel">
           <strong>{FIXTURES[selected.kind].name}</strong>
-          <button onClick={() => controller.rotate()}>旋轉 (R)</button>
-          <button onClick={() => controller.startMoving(selected.id)}>移動</button>
-          <button className="danger" onClick={() => controller.sell(selected.id)}>
-            出售 +{formatMoney(sellRefund(selected.kind))}
-          </button>
+          <FixtureActions controller={controller} fixture={selected} />
         </div>
       )}
 

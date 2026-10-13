@@ -17,7 +17,6 @@ import { TILE_HEIGHT, TILE_WIDTH, gridToScreen, screenToGrid, tileDiamond } from
 import type { ScreenPoint } from './iso';
 import { Camera } from './camera';
 import type { StoreBounds, Viewport } from './camera';
-import { ART_HEIGHT } from './fixture-art';
 import { GestureTracker } from './gestures';
 import { pickFixture } from './pick';
 import { LANDSCAPE_PHONE_QUERY, NARROW_QUERY, matches } from '../ui/media';
@@ -251,9 +250,9 @@ export async function createStoreScene(host: HTMLElement, controller: Controller
       const f = game.fixture(id);
       if (!f) return;
       const fp = footprint(FIXTURES[f.kind], f);
-      const center = gridToScreen(fp.origin.x + fp.spanX / 2, fp.origin.y + fp.spanY / 2);
-      // 以設施圖的中段為準：地板中心往上半個設施高
-      camera.reveal({ x: center.x, y: center.y - ART_HEIGHT[f.kind] / 2 }, area);
+      // 以地板最前角為準：這一點露出來，整個設施圖就都在抽屜外
+      const front = gridToScreen(fp.origin.x + fp.spanX, fp.origin.y + fp.spanY);
+      camera.reveal(front, area);
       applyCamera();
     },
     gridToClient(p) {

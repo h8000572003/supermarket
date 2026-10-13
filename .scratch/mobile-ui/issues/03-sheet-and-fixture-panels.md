@@ -6,12 +6,12 @@
 
 **Blocked by:** 01, 02
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] 直向時，選取一個靠近店面底部的設施，抽屜打開後該設施仍在抽屜上方可見
-- [ ] 下拉抽屜或點地板空白處會關閉抽屜並取消選取
-- [ ] 橫向時抽屜從右側滑出
-- [ ] 「目標」面板在窄版下為抽屜
-- [ ] `BottomSheet` 設定為不可關閉時，下拉和點背景都不會關閉它（供 07 使用）
-- [ ] 三種尺寸（iPhone 13 直向、iPhone 13 橫向、1440×900 桌機）的 Playwright 截圖符合預期
-- [ ] `npm test`、`npm run lint`、`npm run build` 通過
+- [x] 直向時，選取一個靠近店面底部的設施，抽屜打開後該設施仍在抽屜上方可見
+- [x] 下拉抽屜或點地板空白處會關閉抽屜並取消選取
+- [x] 橫向時抽屜從右側滑出
+- [x] 「目標」面板在窄版下為抽屜
+- [x] `BottomSheet` 設定為不可關閉時，下拉和點背景都不會關閉它（供 07 使用）
+- [x] 三種尺寸（iPhone 13 直向、iPhone 13 橫向、1440×900 桌機）的 Playwright 截圖符合預期
+- [x] `npm test`、`npm run lint`、`npm run build` 通過
