@@ -70,7 +70,11 @@ export function FixtureSheet({ controller, scene }: { controller: Controller; sc
           {def.slots > 0 && <SlotPanel controller={controller} fixture={selected} />}
         </>
       ) : (
-        <DispatchPanel controller={controller} fixture={selected} showName={false} />
+        <>
+          <DispatchPanel controller={controller} fixture={selected} showName={false} />
+          {/* 營業中也能更換格位商品（換貨，ADR 0004） */}
+          {def.slots > 0 && <SlotPanel controller={controller} fixture={selected} />}
+        </>
       )}
     </BottomSheet>
   );

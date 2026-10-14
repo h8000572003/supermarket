@@ -1,11 +1,17 @@
 import { FIXTURES } from '../sim/catalog/fixtures';
-import { CATEGORIES, PRODUCTS } from '../sim/catalog/products';
+import { CATEGORIES, PRODUCTS, productById } from '../sim/catalog/products';
 import { totalQty } from '../sim/inventory/batch';
 import type { Fixture } from '../sim/store/store-layout';
 import type { Controller } from './controller';
 
-/** 選取陳列櫃時：指定每個格位陳列的商品 */
+const productName = (id: string | null) => (id ? (productById(id)?.name ?? id) : null);
+
+/**
+ * 選取陳列櫃時：指定每個格位陳列的商品。
+ * 準備階段立即生效；營業中發起換貨（店員下架後才改），換貨中顯示「換貨中：舊商品 → 新商品」。
+ */
 export function SlotPanel({ controller, fixture }: { controller: Controller; fixture: Fixture }) {
+  const open = controller.game.phase === 'open';
   const { game, interaction } = controller;
   const def = FIXTURES[fixture.kind];
   const options = PRODUCTS.filter((p) => CATEGORIES[p.category].display === fixture.kind);
@@ -18,23 +24,37 @@ export function SlotPanel({ controller, fixture }: { controller: Controller; fix
 
   return (
     <div className="panel slot-panel">
-      {game.slots(fixture.id).map((slot, i) => (
-        <label key={i} className="slot">
-          <span className="slot-label">格位 {i + 1}</span>
-          <select value={slot.productId ?? ''} onChange={(e) => assign(i, e.target.value)}>
-            <option value="">（未指定）</option>
-            {options.map((p) => (
-              <option key={p.id} value={p.id} disabled={!game.isUnlocked(p.category)}>
-                {p.name}
-                {game.isUnlocked(p.category) ? '' : '（未解鎖）'}
-              </option>
-            ))}
-          </select>
-          <span className="slot-stock">
-            {totalQty(slot.batches)}/{def.slotCapacity}
-          </span>
-        </label>
-      ))}
+      {open && (
+        <strong className="slot-panel-heading">
+          更換商品<small>店員下架舊商品後換上</small>
+        </strong>
+      )}
+      {game.slots(fixture.id).map((slot, i) => {
+        const changeover = game.changeover(fixture.id, i);
+        const shown = changeover ? changeover.productId : slot.productId;
+        return (
+          <label key={i} className={changeover ? 'slot slot-in-changeover' : 'slot'}>
+            <span className="slot-label">格位 {i + 1}</span>
+            <select value={shown ?? ''} onChange={(e) => assign(i, e.target.value)}>
+              <option value="">（未指定）</option>
+              {options.map((p) => (
+                <option key={p.id} value={p.id} disabled={!game.isUnlocked(p.category)}>
+                  {p.name}
+                  {game.isUnlocked(p.category) ? '' : '（未解鎖）'}
+                </option>
+              ))}
+            </select>
+            <span className="slot-stock">
+              {totalQty(slot.batches)}/{def.slotCapacity}
+            </span>
+            {changeover && (
+              <span className="slot-changeover">
+                換貨中：{productName(slot.productId) ?? '未指定'} → {productName(changeover.productId) ?? '清空'}
+              </span>
+            )}
+          </label>
+        );
+      })}
     </div>
   );
 }

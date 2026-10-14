@@ -64,6 +64,11 @@ export class Inventory {
     this.setSlot(fixtureId, index, { productId, batches: [] });
   }
 
+  /** 直接替換格位內容（不搬移庫存）；呼叫者負責處理原本的批次 */
+  replaceSlot(fixtureId: string, index: number, slot: Slot): void {
+    this.setSlot(fixtureId, index, slot);
+  }
+
   /** 從倉庫以先進先出補到 capacity；回傳補上的數量 */
   restockSlot(fixtureId: string, index: number, capacity: number): number {
     const current = this.slot(fixtureId, index);

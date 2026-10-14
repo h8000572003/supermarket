@@ -73,7 +73,7 @@ function CompactToolbar({ controller, onOpenStock }: ToolbarProps) {
   );
 
   let hint: string;
-  if (!prep) hint = game.phase === 'open' ? '點格位或收銀台可派工 · 擺設請在準備階段' : '擺設與進貨請在準備階段進行';
+  if (!prep) hint = game.phase === 'open' ? '點格位或收銀台可派工、換貨 · 擺設請在準備階段' : '擺設與進貨請在準備階段進行';
   else if (game.day === 1 && game.fixtures.length === 0 && tool.mode === 'select') hint = '先放設施、指定商品、進貨、雇店員，再按「開店」';
   else if (tool.mode === 'place') hint = coarse ? '點地板移動預覽，再按 ✓ 放置' : '左鍵放置 · R 旋轉 · 右鍵 / Esc 取消';
   else hint = '點設施以旋轉、移動或出售';
@@ -149,10 +149,12 @@ function WideToolbar({ controller }: ToolbarProps) {
         {open && selected && (selected.kind === 'register' || FIXTURES[selected.kind].slots > 0) && (
           <DispatchPanel controller={controller} fixture={selected} />
         )}
+        {/* 營業中也能更換格位商品（換貨，ADR 0004） */}
+        {open && selected && FIXTURES[selected.kind].slots > 0 && <SlotPanel controller={controller} fixture={selected} />}
         <div className="toolbar">
           <span className="hint">
             {open
-              ? '營業中可限時特價、緊急叫貨（商品與進貨），或點選格位／收銀台「優先處理」派工；擺設與定價請在準備階段進行'
+              ? '營業中可限時特價、緊急叫貨（商品與進貨），點選格位／收銀台「優先處理」派工，或更換格位商品（店員下架後換上）；擺設與定價請在準備階段進行'
               : '目前只能觀察；擺設、進貨與定價請在準備階段進行'}
           </span>
         </div>

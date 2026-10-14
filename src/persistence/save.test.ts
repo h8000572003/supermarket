@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MAX_STEPS_PER_TICK, STEP_MS } from '../sim/clock/clock';
 import { Game } from '../sim/game';
+import { SNAPSHOT_VERSION } from '../sim/snapshot';
 import { playThroughDay, runOpenHours, tickResolving } from '../sim/test-helpers';
 import { SAVE_KEY, clearSave, loadGame, saveGame } from './save';
 
@@ -118,6 +119,28 @@ describe('存檔與讀檔', () => {
     const loaded = loadGame(storage)!;
     expect(loaded.snapshot()).toEqual(game.snapshot());
     expect(loaded.snapshot()!.inventory.backroom).toContainEqual({ productId: 'chips', qty: 12, arrivedDay: loaded.day });
+  });
+
+  it('營業中換貨後打烊，進入準備階段存讀檔：換貨已完成、狀態相等、版本號不變', () => {
+    const storage = new MemoryStorage();
+    const game = establishedGame();
+    const fridge = game.fixtures.find((f) => f.kind === 'fridge')!.id;
+    game.openStore();
+    // 打烊前幾分鐘才換貨：店員來不及下架，打烊時直接完成
+    while (game.minuteOfDay < 22 * 60 + 58) tickResolving(game, STEP_MS / game.speed);
+    expect(game.slots(fridge)[0]!.productId).toBe('cola');
+    expect(game.assignSlot(fridge, 0, 'water').ok).toBe(true);
+    expect(game.changeovers).toHaveLength(1);
+    while (game.phase === 'open') tickResolving(game, STEP_MS * MAX_STEPS_PER_TICK);
+    game.startNextDay();
+    expect(game.changeovers).toEqual([]);
+    expect(game.slots(fridge)[0]).toEqual({ productId: 'water', batches: [] });
+
+    expect(saveGame(game, storage)).toBe(true);
+    const loaded = loadGame(storage)!;
+    expect(loaded.snapshot()).toEqual(game.snapshot());
+    expect(loaded.snapshot()!.version).toBe(SNAPSHOT_VERSION);
+    expect(loaded.changeovers).toEqual([]);
   });
 
   it('清除存檔', () => {

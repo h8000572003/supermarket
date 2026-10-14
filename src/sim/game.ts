@@ -50,6 +50,7 @@ import { Rng } from './rng';
 import { SNAPSHOT_VERSION } from './snapshot';
 import type { GameSnapshot } from './snapshot';
 import { totalQty } from './inventory/batch';
+import type { Batch } from './inventory/batch';
 import { customerAccessTiles, rotateClockwise, slotAccessTile, staffAccessTiles } from './store/geometry';
 import type { Facing } from './store/geometry';
 import { BACKROOM_DOOR, ENTRANCE } from './store/layout';
@@ -152,6 +153,14 @@ export type DispatchTarget =
   | { readonly kind: 'slot'; readonly fixtureId: string; readonly slotIndex: number }
   | { readonly kind: 'register'; readonly registerId: string };
 
+/** 營業中的換貨：格位等待下架，下架後改成目標商品（null 為不指定商品），見 ADR 0004 */
+export interface Changeover {
+  readonly fixtureId: string;
+  readonly slotIndex: number;
+  /** 換貨目標：下架後格位要改成的商品；null 為不指定商品 */
+  readonly productId: string | null;
+}
+
 const sameTarget = (a: DispatchTarget, b: DispatchTarget): boolean =>
   a.kind === 'slot'
     ? b.kind === 'slot' && a.fixtureId === b.fixtureId && a.slotIndex === b.slotIndex
@@ -248,6 +257,8 @@ export class Game {
   private readonly reservedSlots = new Set<string>();
   /** 營業中的派工標記（瞬時狀態，不存檔；打烊時清除） */
   private _dispatches: DispatchTarget[] = [];
+  /** 營業中的換貨（瞬時狀態，不存檔；打烊時全部直接完成），依發起順序 */
+  private _changeovers: Changeover[] = [];
   /** 狀況自動派工的收銀台：到這一步之前即使隊伍清空也不解除（團客期間持續待命） */
   private registerHolds = new Map<string, number>();
   private nextFixtureId = 1;
@@ -414,6 +425,16 @@ export class Game {
 
   isDispatched(target: DispatchTarget): boolean {
     return this._dispatches.some((d) => sameTarget(d, target));
+  }
+
+  /** 營業中進行中的換貨（依發起順序）；其他階段為空 */
+  get changeovers(): readonly Changeover[] {
+    return this._changeovers;
+  }
+
+  /** 格位的換貨；沒有換貨時為 null */
+  changeover(fixtureId: string, slotIndex: number): Changeover | null {
+    return this._changeovers.find((c) => c.fixtureId === fixtureId && c.slotIndex === slotIndex) ?? null;
   }
 
   /** 今天到目前為止的帳目（營業中即時顯示用） */
@@ -588,9 +609,13 @@ export class Game {
     return ok(refund);
   }
 
-  /** 指定格位的商品（null 為清空）；原本的陳列庫存退回倉庫 */
+  /**
+   * 指定格位的商品（null 為清空）。
+   * 準備階段立即生效：原本的陳列庫存退回倉庫。營業時段發起換貨（ADR 0004）：
+   * 店員下架前舊商品照賣，下架那一刻格位才改成新商品。
+   */
   assignSlot(fixtureId: string, index: number, productId: string | null): Result {
-    if (this._phase !== 'prep') return fail('not-prep-phase');
+    if (this._phase !== 'prep' && this._phase !== 'open') return fail('not-prep-phase');
     const fixture = this.layout.get(fixtureId);
     if (!fixture || !this.inventory.slot(fixtureId, index)) return fail('invalid-slot');
     if (productId !== null) {
@@ -599,9 +624,31 @@ export class Game {
       if (!this.unlocked.has(product.category)) return fail('category-locked');
       if (CATEGORIES[product.category].display !== fixture.kind) return fail('wrong-display');
     }
-    this.inventory.assignSlot(fixtureId, index, productId);
+    if (this._phase === 'open') this.startChangeover(fixtureId, index, productId);
+    else this.inventory.assignSlot(fixtureId, index, productId);
     this.changed();
     return ok(undefined);
+  }
+
+  /** 營業中發起（或更新目標）換貨；指定成目前的商品且沒有換貨時不做任何事 */
+  private startChangeover(fixtureId: string, slotIndex: number, productId: string | null): void {
+    const existing = this.changeover(fixtureId, slotIndex);
+    if (!existing && this.inventory.slot(fixtureId, slotIndex)?.productId === productId) return;
+    const next: Changeover = { fixtureId, slotIndex, productId };
+    this._changeovers = existing
+      ? this._changeovers.map((c) => (c === existing ? next : c))
+      : [...this._changeovers, next];
+    // 下架前不再補舊商品：還沒取貨的一般補貨放下
+    for (const agent of this.agents) agent.abandonRestock(fixtureId, slotIndex, this.reservedSlots);
+  }
+
+  /** 完成換貨：格位上的陳列庫存全部取下，格位改成換貨目標；回傳取下的批次 */
+  private completeChangeover(c: Changeover): Batch[] {
+    this._changeovers = this._changeovers.filter((x) => x !== c);
+    const taken = this.inventory.slot(c.fixtureId, c.slotIndex)?.batches ?? [];
+    this.inventory.replaceSlot(c.fixtureId, c.slotIndex, { productId: c.productId, batches: [] });
+    this.changed();
+    return [...taken];
   }
 
   setSalePrice(productId: string, price: number): Result {
@@ -822,6 +869,7 @@ export class Game {
     this.agents = this._staff.map((s) => new StaffAgent(s.id, BACKROOM_DOOR));
     this.reservedSlots.clear();
     this._dispatches = [];
+    this._changeovers = [];
     this.registerHolds.clear();
     this.customers = [];
     this.pendingRush = [];
@@ -988,7 +1036,7 @@ export class Game {
   /** 推進一個固定步長；營業時段結束時打烊 */
   private advanceStep(): void {
     this.maybeSpawnCustomer();
-    // 店員工作優先序：有人排隊的收銀台 > 派工標記 > 一般補貨
+    // 店員工作優先序：有人排隊的收銀台 > 派工標記 > 換貨的下架 > 一般補貨
     const heldRegisters = new Set(this._dispatches.flatMap((d) => (d.kind === 'register' ? [d.registerId] : [])));
     this.checkout.update(
       this.agents,
@@ -1049,9 +1097,11 @@ export class Game {
     // 還在店內的顧客離開，未結帳的商品退回倉庫
     for (const c of this.customers) c.forceLeave(this.customerWorld);
     this.removeDepartedCustomers();
-    // 店員手上還沒上架的商品退回倉庫
+    // 店員手上還沒上架的商品、下架途中的舊商品退回倉庫
     for (const agent of this.agents) this.inventory.receive(agent.carrying);
     this.agents = [];
+    // 還沒下架的換貨直接完成：舊陳列庫存退回倉庫、格位改成換貨目標（ADR 0004）
+    for (const c of this._changeovers) this.inventory.receive(this.completeChangeover(c));
     this.reservedSlots.clear();
     this._dispatches = [];
     this.registerHolds.clear();
@@ -1200,11 +1250,12 @@ export class Game {
   private readonly staffWorld: StaffWorld = {
     backroomDoor: BACKROOM_DOOR,
     isWalkable: (p) => this.layout.isWalkable(p),
+    // 換貨中、下架前的格位不列入補貨（不再補舊商品）
     restockCandidates: () =>
       this.layout.list().flatMap((f) => {
         const capacity = FIXTURES[f.kind].slotCapacity;
         return this.inventory.slots(f.id).flatMap((slot, slotIndex) =>
-          slot.productId
+          slot.productId && !this.changeover(f.id, slotIndex)
             ? [
                 {
                   fixtureId: f.id,
@@ -1229,6 +1280,12 @@ export class Game {
       if (!f) return this.inventory.receive(batches);
       this.inventory.putIntoSlot(fixtureId, slotIndex, batches, FIXTURES[f.kind].slotCapacity);
     },
+    clearOutCandidates: () => this._changeovers,
+    clearOut: (fixtureId, slotIndex) => {
+      const c = this.changeover(fixtureId, slotIndex);
+      return c ? this.completeChangeover(c) : [];
+    },
+    returnToBackroom: (batches) => this.inventory.receive(batches),
   };
 
   /** 直接從倉庫補滿格位（略過店員）；回傳補上的數量。供測試布置情境用 */

@@ -1,3 +1,4 @@
+import { productById } from '../catalog/products';
 import type { CategoryId } from '../catalog/products';
 import type { Batch } from '../inventory/batch';
 import type { Passable } from '../pathfinding/grid';
@@ -179,8 +180,9 @@ export class CustomerAgent extends Walker {
   private pickFromShelf(world: CustomerWorld): void {
     const t = this.target;
     const content = t && world.slotContent(t.fixtureId, t.slotIndex);
-    if (!t || !content || content.qty === 0) {
-      // 走到時已被拿光：換一格再試
+    const category = this.shoppingList[this.listIndex];
+    if (!t || !content || content.qty === 0 || productById(content.productId)?.category !== category) {
+      // 走到時已被拿光，或格位已換貨成其他類別的商品：換一格再試
       if (t) this.tried.add(`${t.fixtureId}#${t.slotIndex}`);
       return this.nextCategory(world);
     }

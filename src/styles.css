@@ -256,6 +256,29 @@ select {
   opacity: 0.85;
 }
 
+.slot-in-changeover {
+  flex-wrap: wrap;
+}
+
+/* 營業中的格位選單標題（佔滿整列） */
+.slot-panel-heading {
+  grid-column: 1 / -1;
+}
+
+.slot-panel-heading small {
+  margin-left: 8px;
+  font-weight: 400;
+  opacity: 0.7;
+}
+
+/* 換貨中：舊商品 → 新商品（佔滿整列） */
+.slot-changeover {
+  flex-basis: 100%;
+  grid-column: 1 / -1;
+  color: var(--accent);
+  font-size: 0.9em;
+}
+
 .side-panel {
   position: absolute;
   top: 64px;
@@ -866,6 +889,10 @@ button {
 .sheet .slot {
   display: grid;
   grid-template-columns: 4em 1fr 3.5em;
+}
+
+.sheet .dispatch-panel .slot {
+  grid-template-columns: 4em 1fr 3.5em auto;
 }
 
 .sheet .slot select {

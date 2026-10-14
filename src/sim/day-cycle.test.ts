@@ -25,7 +25,7 @@ describe('營業日循環', () => {
     expect(game.openStore()).toEqual({ ok: false, error: 'not-prep-phase' });
   });
 
-  it('營業時段與每日結算時，店長的指令都被拒絕', () => {
+  it('營業時段與每日結算時，店長的準備階段指令都被拒絕（營業中指定格位商品改為換貨，見 changeover.test.ts）', () => {
     const game = newGame();
     const r = game.placeFixture('fridge', { origin: { x: 2, y: 2 }, facing: 'south' });
     if (!r.ok) throw new Error(r.error);
@@ -34,7 +34,6 @@ describe('營業日循環', () => {
       game.placeFixture('shelf', { origin: { x: 6, y: 4 }, facing: 'south' }),
       game.rotateFixture(id),
       game.sellFixture(id),
-      game.assignSlot(id, 0, 'cola'),
       game.setSalePrice('cola', 40),
       game.submitPurchaseOrder([{ productId: 'cola', qty: 12 }]),
     ];
@@ -42,7 +41,9 @@ describe('營業日循環', () => {
     game.openStore();
     for (const a of attempts()) expect(a).toEqual({ ok: false, error: 'not-prep-phase' });
     runUntilClosed(game);
-    for (const a of attempts()) expect(a).toEqual({ ok: false, error: 'not-prep-phase' });
+    for (const a of [...attempts(), game.assignSlot(id, 0, 'cola')]) {
+      expect(a).toEqual({ ok: false, error: 'not-prep-phase' });
+    }
   });
 });
 
