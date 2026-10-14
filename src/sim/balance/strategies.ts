@@ -76,16 +76,17 @@ function addDisplay(game: Game, plan: StorePlan, kind: FixtureKind, x: number, y
 const DEFAULT_DAILY_SALES = 15;
 
 /**
- * 依昨天賣量預估日需求。今天下的單明天才到，
- * 所以要讓「現有 + 在途 − 今天會賣掉」≥ 明天需求 × cover。
- * tomorrowFactor 為各類別明天需求相對於昨天賣量的倍率（依預報進貨用）；省略時視為與昨天相同。
+ * 依昨天賣量預估日需求。準備階段是開店前一晚，現在下的單在即將開店時送達，
+ * 所以要讓「現有 + 在途」≥ 即將開店那天的需求 × cover。沒有多備一天的貨，
+ * 安全量 cover 要獨自吸收每天賣量的起伏（昨天賣量受缺貨所限，會低估需求）。
+ * dayFactor 為各類別即將開店那天的需求相對於昨天賣量的倍率（依預報進貨用）；省略時視為與昨天相同。
  * 資金不夠時按比例縮減。
  */
 export function parOrder(
   game: Game,
   plan: StorePlan,
-  cover = 1.2,
-  tomorrowFactor?: (category: CategoryId) => number,
+  cover = 1.3,
+  dayFactor?: (category: CategoryId) => number,
 ): void {
   const sold = game.lastReport?.sales ?? {};
   const onShelf = new Map<string, number>();
@@ -100,8 +101,7 @@ export function parOrder(
     const product = productById(productId);
     if (!product || !game.isUnlocked(product.category)) continue;
     const expected = sold[productId] ?? DEFAULT_DAILY_SALES;
-    // 今天照昨天的賣量，明天再乘上 tomorrowFactor
-    const days = 1 + cover * (tomorrowFactor?.(product.category) ?? 1);
+    const days = cover * (dayFactor?.(product.category) ?? 1);
     const have =
       game.backroomQty(productId) +
       (onShelf.get(productId) ?? 0) +
@@ -114,9 +114,10 @@ export function parOrder(
   const budget = game.funds - reserve - SHIPPING_FEE;
   const fullCost = wants.reduce((s, w) => s + w.need * w.cost, 0);
   const scale = fullCost > 0 ? Math.min(1, Math.max(0, budget) / fullCost) : 0;
+  // 資金足夠時進位到最低訂購量的倍數（不然賣量接近最低訂購量時，進貨永遠追不上需求）；不夠時捨去
+  const round = scale >= 0.99 ? Math.ceil : Math.floor;
   const lines = wants
-    .map((w) => ({ productId: w.productId, qty: Math.floor((w.need * scale) / w.minOrder) * w.minOrder }))
-    .map((l, i) => ({ ...l, qty: l.qty === 0 && scale >= 0.99 ? wants[i]!.minOrder : l.qty }))
+    .map((w) => ({ productId: w.productId, qty: round((w.need * scale) / w.minOrder) * w.minOrder }))
     .filter((l) => l.qty > 0);
   if (lines.length > 0) {
     const r = game.submitPurchaseOrder(lines);
@@ -144,7 +145,7 @@ export const standard: Strategy = {
 };
 
 /** 標準經營的準備階段：依解鎖擴充品項、賺錢後加開收銀台，再依銷量補貨 */
-function standardPrep(game: Game, plan: StorePlan, tomorrowFactor?: (category: CategoryId) => number): void {
+function standardPrep(game: Game, plan: StorePlan, dayFactor?: (category: CategoryId) => number): void {
   if (game.isUnlocked('fresh') && !plan.stocked.has('fresh')) {
     const fridge = plan.displays[1]!;
     fridge.products.splice(0, 4, 'rice-ball', 'sandwich', 'bento', 'rice-ball');
@@ -160,7 +161,7 @@ function standardPrep(game: Game, plan: StorePlan, tomorrowFactor?: (category: C
     place(game, 'register', 7, 4, 'west');
     game.hireStaff();
   }
-  parOrder(game, plan, undefined, tomorrowFactor);
+  parOrder(game, plan, undefined, dayFactor);
 }
 
 /**
@@ -179,8 +180,8 @@ export function expectedDemandFactor(
 }
 
 /**
- * 依預報進貨的需求調整：明天相對於昨天（賣量的來源）的預期需求倍率。
- * 鮮食會報廢，照倍率增減（雨天前少進）；其他類別放得住，只在明天需求較高時多進（熱天前多進飲料、冷天前多進泡麵），
+ * 依預報進貨的需求調整：即將開店那天（準備階段的明日預報，即 game.today）相對於昨天（賣量的來源）的預期需求倍率。
+ * 鮮食會報廢，照倍率增減（雨天前少進）；其他類別放得住，只在那天需求較高時多進（熱天前多進飲料、冷天前多進泡麵），
  * 需求較低時照標準進貨，不冒缺貨的風險。
  */
 export function forecastAdjustment(game: Game, yesterday: DayConditions | undefined): (category: CategoryId) => number {
@@ -188,12 +189,12 @@ export function forecastAdjustment(game: Game, yesterday: DayConditions | undefi
   const factor = (c: DayConditions | undefined, category: CategoryId) =>
     c ? expectedDemandFactor(c, category, available) : 1;
   return (category) => {
-    const relative = factor(game.forecast, category) / factor(yesterday, category);
+    const relative = factor(game.today, category) / factor(yesterday, category);
     return CATEGORIES[category].shelfLife !== undefined ? relative : Math.max(1, relative);
   };
 }
 
-/** 依預報進貨：標準經營的店，各類別的進貨量依明日預報的天氣與星期調整（見 forecastAdjustment） */
+/** 依預報進貨：標準經營的店，各類別的進貨量依明日預報（即將開店那天）的天氣與星期調整（見 forecastAdjustment） */
 export const forecastAware: Strategy = {
   ...standard,
   name: '依預報進貨',

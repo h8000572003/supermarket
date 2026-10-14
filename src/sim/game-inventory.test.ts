@@ -3,7 +3,7 @@ import { FIXTURES } from './catalog/fixtures';
 import { productById } from './catalog/products';
 import { SHIPPING_FEE } from './economy/purchase-order';
 import { Game, STARTING_FUNDS } from './game';
-import { playThroughDay } from './test-helpers';
+import { finishOpenHours, playThroughDay } from './test-helpers';
 
 function setup() {
   const game = new Game({ seed: 1 });
@@ -14,16 +14,21 @@ function setup() {
 }
 
 describe('進貨單', () => {
-  it('第 1 天的開幕進貨立即付款並當天送達', () => {
+  it('第 1 天準備階段下單：立即付款，開店前不送達，按下開店時送達倉庫', () => {
     const game = new Game({ seed: 1 });
     const r = game.submitPurchaseOrder([{ productId: 'cola', qty: 24 }]);
     expect(r.ok).toBe(true);
     expect(game.funds).toBe(STARTING_FUNDS - 24 * productById('cola')!.cost - SHIPPING_FEE);
+    expect(game.backroomQty('cola')).toBe(0);
+    expect(game.pendingOrders).toHaveLength(1);
+    expect(game.pendingOrders[0]).toMatchObject({ placedDay: 1, deliveryDay: 1 });
+
+    expect(game.openStore().ok).toBe(true);
     expect(game.backroomQty('cola')).toBe(24);
     expect(game.pendingOrders).toHaveLength(0);
   });
 
-  it('第 2 天起：下單立即付款，隔天送達倉庫', () => {
+  it('第 2 天起相同：準備階段（前一晚）下的單在當天開店時送達倉庫', () => {
     const game = new Game({ seed: 1 });
     playThroughDay(game);
     const funds = game.funds;
@@ -32,15 +37,32 @@ describe('進貨單', () => {
     expect(game.funds).toBe(funds - 24 * productById('cola')!.cost - SHIPPING_FEE);
     expect(game.backroomQty('cola')).toBe(0);
     expect(game.pendingOrders).toHaveLength(1);
-    expect(game.pendingOrders[0]).toMatchObject({ placedDay: 2, deliveryDay: 3 });
+    expect(game.pendingOrders[0]).toMatchObject({ placedDay: 2, deliveryDay: 2 });
 
-    playThroughDay(game);
-    expect(game.day).toBe(3);
+    expect(game.openStore().ok).toBe(true);
+    expect(game.day).toBe(2);
     expect(game.backroomQty('cola')).toBe(24);
     expect(game.pendingOrders).toHaveLength(0);
   });
 
-  it('送達日還沒到的單留著，到了那天開店前才送達', () => {
+  it('進入準備階段時不送貨：送達日到了也要等開店', () => {
+    const base = new Game({ seed: 1 });
+    playThroughDay(base);
+    const game = Game.fromSnapshot({
+      ...base.snapshot()!,
+      pendingOrders: [{ lines: [{ productId: 'cola', qty: 24 }], placedDay: 2, deliveryDay: 3, total: 0 }],
+    });
+    playThroughDay(game);
+    expect(game.day).toBe(3);
+    expect(game.phase).toBe('prep');
+    expect(game.backroomQty('cola')).toBe(0);
+    expect(game.pendingOrders).toHaveLength(1);
+    game.openStore();
+    expect(game.backroomQty('cola')).toBe(24);
+    expect(game.pendingOrders).toHaveLength(0);
+  });
+
+  it('送達日還沒到的單留著，到了那天開店時才送達', () => {
     const base = new Game({ seed: 1 });
     playThroughDay(base);
     const snapshot = base.snapshot()!;
@@ -50,10 +72,14 @@ describe('進貨單', () => {
     });
     playThroughDay(game);
     expect(game.day).toBe(3);
+    game.openStore();
     expect(game.backroomQty('cola')).toBe(0);
     expect(game.pendingOrders).toHaveLength(1);
-    playThroughDay(game);
+    finishOpenHours(game);
+    game.startNextDay();
     expect(game.day).toBe(4);
+    expect(game.backroomQty('cola')).toBe(0);
+    game.openStore();
     expect(game.backroomQty('cola')).toBe(24);
     expect(game.pendingOrders).toHaveLength(0);
   });
@@ -110,10 +136,10 @@ describe('格位', () => {
 
   it('補貨以先進先出從倉庫補到容量上限', () => {
     const { game, fridgeId } = setup();
-    game.submitPurchaseOrder([{ productId: 'cola', qty: 12 }]); // 第 1 天開幕進貨，當天送達
+    game.submitPurchaseOrder([{ productId: 'cola', qty: 12 }]); // 第 1 天開店時送達
     playThroughDay(game);
     game.submitPurchaseOrder([{ productId: 'cola', qty: 12 }]);
-    playThroughDay(game); // 第 3 天送達
+    playThroughDay(game); // 第 2 天開店時送達
     game.assignSlot(fridgeId, 0, 'cola');
 
     expect(game.restockSlot(fridgeId, 0)).toBe(FIXTURES.fridge.slotCapacity);

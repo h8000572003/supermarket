@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { MAX_STEPS_PER_TICK, OPEN_HOURS_REAL_MS, OPEN_MINUTE, STEP_MS, STEPS_PER_DAY } from './clock/clock';
 import { productById } from './catalog/products';
 import { DAILY_RENT, Game, STARTING_FUNDS, phaseError } from './game';
-import { playThroughDay, runOpenHours } from './test-helpers';
+import { finishOpenHours, openStoreArranged, playThroughDay, runOpenHours } from './test-helpers';
 
 const newGame = () => new Game({ seed: 1 });
 
@@ -135,6 +135,7 @@ describe('結算對帳', () => {
 });
 
 describe('鮮食報廢', () => {
+  /** 第 1 天：準備階段下單、開店時送達，開店前擺好格位；停在第 1 天營業中 */
   function withRiceBalls() {
     const game = new Game({ seed: 1, customerArrivals: false });
     game.unlockCategory('fresh');
@@ -144,33 +145,64 @@ describe('鮮食報廢', () => {
       { productId: 'rice-ball', qty: 12 },
       { productId: 'cola', qty: 12 },
     ]);
-    // 第 1 天的開幕進貨當天送達
     game.assignSlot(fridge.value.id, 0, 'rice-ball');
-    game.restockSlot(fridge.value.id, 0); // 架上 10、倉庫 2
+    openStoreArranged(game, () => game.restockSlot(fridge.value.id, 0)); // 架上 10、倉庫 2
     return { game, fridgeId: fridge.value.id };
   }
 
-  it('保存期限 2 天：第 1 天送達，第 2 天仍可販售', () => {
+  /** 跑完今天的營業時段，進入下一天的準備階段 */
+  function closeDay(game: Game) {
+    finishOpenHours(game);
+    game.startNextDay();
+  }
+
+  it('保存期限 2 天：第 1 天開店時送達，第 2 天仍可販售', () => {
     const { game, fridgeId } = withRiceBalls();
-    playThroughDay(game);
+    expect(game.slots(fridgeId)[0]?.batches).toEqual([{ productId: 'rice-ball', qty: 10, arrivedDay: 1 }]);
+    closeDay(game);
     expect(game.day).toBe(2);
     expect(game.backroomQty('rice-ball')).toBe(2);
     expect(game.slots(fridgeId)[0]?.batches).toEqual([{ productId: 'rice-ball', qty: 10, arrivedDay: 1 }]);
     expect(game.todayWaste).toEqual([]);
   });
 
-  it('第 3 天開始時，倉庫與格位上的過期品都被報廢', () => {
+  it('第 2 天打烊後（進入第 3 天的準備階段時），倉庫與格位上的過期品都被報廢', () => {
     const { game, fridgeId } = withRiceBalls();
+    closeDay(game);
     playThroughDay(game);
-    playThroughDay(game);
+    expect(game.day).toBe(3);
+    expect(game.phase).toBe('prep');
     expect(game.backroomQty('rice-ball')).toBe(0);
     expect(game.slots(fridgeId)[0]).toEqual({ productId: 'rice-ball', batches: [] });
     expect(game.todayWaste).toEqual([{ productId: 'rice-ball', qty: 12, cost: 12 * productById('rice-ball')!.cost }]);
   });
 
+  it('前一晚下的鮮食以開店那天為送達日：當天與隔天可販售，再隔天的準備階段報廢', () => {
+    const { game } = withRiceBalls();
+    closeDay(game);
+    playThroughDay(game);
+    // 第 3 天開店前一晚：舊的飯糰已報廢，再訂一批
+    expect(game.day).toBe(3);
+    game.submitPurchaseOrder([{ productId: 'rice-ball', qty: 12 }]);
+    expect(game.backroomQty('rice-ball')).toBe(0);
+    game.openStore();
+    expect(game.backroomQty('rice-ball')).toBe(12);
+    closeDay(game);
+    // 第 4 天仍可販售
+    expect(game.day).toBe(4);
+    expect(game.todayWaste).toEqual([]);
+    expect(game.backroomQty('rice-ball')).toBe(12);
+    playThroughDay(game);
+    // 第 4 天打烊後報廢
+    expect(game.day).toBe(5);
+    expect(game.backroomQty('rice-ball')).toBe(0);
+    expect(game.todayWaste).toEqual([{ productId: 'rice-ball', qty: 12, cost: 12 * productById('rice-ball')!.cost }]);
+  });
+
   it('非鮮食不會過期', () => {
     const { game } = withRiceBalls();
-    for (let i = 0; i < 5; i++) playThroughDay(game);
+    closeDay(game);
+    for (let i = 0; i < 4; i++) playThroughDay(game);
     expect(game.backroomQty('cola')).toBe(12);
   });
 });

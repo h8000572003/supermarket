@@ -40,7 +40,7 @@ export interface RushOrder {
   readonly placedDay: number;
   /** 下單時刻（一天中的分鐘數） */
   readonly placedMinute: number;
-  /** 預計送達時刻（一天中的分鐘數）；晚於打烊時改於下一個營業日開店前送達 */
+  /** 預計送達時刻（一天中的分鐘數）；晚於打烊時改於下一個營業日開店時送達 */
   readonly etaMinute: number;
   /** 商品金額（計入進貨成本） */
   readonly goods: number;

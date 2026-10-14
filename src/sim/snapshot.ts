@@ -9,7 +9,7 @@ import type { Fixture } from './store/store-layout';
 import type { Weather } from './weather/weather';
 
 /** 快照格式版本；結構改變時遞增，並在 persistence/migrations.ts 加上前一版的遷移（ADR 0006） */
-export const SNAPSHOT_VERSION = 6;
+export const SNAPSHOT_VERSION = 7;
 
 /**
  * 準備階段的完整遊戲狀態（見 ADR 0002）。

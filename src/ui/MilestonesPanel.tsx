@@ -6,7 +6,7 @@ import { useGameVersion } from './hooks';
 import { useNarrow } from './media';
 import { formatGoalCount, formatGoalReward, goalProgressRatio } from './messages';
 
-/** 今天的每日目標：只限當天、不解鎖任何東西，所以和里程碑分開 */
+/** 每日目標（準備階段是即將開店那天的）：只限當天、不解鎖任何東西，所以和里程碑分開 */
 function DailyGoalSection({ game }: { game: Game }) {
   const goal = game.dailyGoal;
   const judged = game.phase === 'report' || game.phase === 'gameover';
@@ -38,7 +38,7 @@ function DailyGoalSection({ game }: { game: Game }) {
           </span>
         </div>
       ) : (
-        <p className="milestone-goal">第 2 天起，每天準備階段會出現一個只限當天的每日目標。</p>
+        <p className="milestone-goal">從第 2 天起，每天開店前一晚（準備階段）會出現一個每日目標，只限隔天營業。</p>
       )}
     </section>
   );

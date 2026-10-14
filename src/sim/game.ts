@@ -403,12 +403,15 @@ export class Game {
     return this._day;
   }
 
-  /** 今天（目前營業日）的天氣與星期 */
+  /**
+   * 今天（目前營業日）的天氣與星期。
+   * 準備階段是這天開店前一晚，玩家看到的明日預報就是這個（CONTEXT.md「明日預報」）
+   */
   get today(): DayConditions {
     return dayConditions(this._day, this.weather.today, this.weekdayOffset);
   }
 
-  /** 明日預報：下一個營業日的天氣與星期（一定準確） */
+  /** 目前營業日的下一個營業日的天氣與星期（一定準確）；準備階段的明日預報是 today，不是這個 */
   get forecast(): DayConditions {
     return dayConditions(this._day + 1, this.weather.tomorrow, this.weekdayOffset);
   }
@@ -565,7 +568,7 @@ export class Game {
     return this.ledger.incidents;
   }
 
-  /** 已下單、尚未送達的進貨單（含打烊前未送達、改於下一個營業日開店前送達的緊急叫貨） */
+  /** 已下單、尚未送達的進貨單（含打烊前未送達、改於下一個營業日開店時送達的緊急叫貨） */
   get pendingOrders(): readonly PurchaseOrder[] {
     return this._pendingOrders;
   }
@@ -768,7 +771,7 @@ export class Game {
 
   /**
    * 下進貨單並立即付款（商品金額 + 運費）；準備階段或營業時段截單前可下（ADR 0005）。
-   * 第 1 天準備階段的開幕進貨立即送達，其餘下一個營業日開店前送達。
+   * 準備階段（前一晚）下的單於即將開店的這一天開店時送達；營業中下的單於下一個營業日開店時送達。
    */
   submitPurchaseOrder(lines: readonly OrderLine[]): Result<PurchaseOrder> {
     if (this._phase === 'open') {
@@ -779,15 +782,13 @@ export class Game {
     const nonEmpty = checked.value;
     const total = orderTotal(nonEmpty);
     if (this._funds < total) return fail('insufficient-funds');
-    const opening = this._phase === 'prep' && isOpeningDelivery(this._day);
     const order: PurchaseOrder = {
       lines: nonEmpty,
       placedDay: this._day,
-      deliveryDay: opening ? this._day : this._day + 1,
+      deliveryDay: this._phase === 'prep' ? this._day : this._day + 1,
       total,
     };
-    if (opening) this.deliver(order);
-    else this._pendingOrders = [...this._pendingOrders, order];
+    this._pendingOrders = [...this._pendingOrders, order];
     this._funds -= total;
     this.ledger.purchases += total;
     this.changed();
@@ -796,7 +797,7 @@ export class Game {
 
   /**
    * 營業中下緊急叫貨並立即付款（商品金額 + 運費）；明細格式與最低訂購量同一般進貨單。
-   * 下單後 2 遊戲小時送達倉庫；打烊前未送達的，改於下一個營業日開店前送達。
+   * 下單後 2 遊戲小時送達倉庫；打烊前未送達的，改於下一個營業日開店時送達。
    * terms 預設為店長的一般緊急叫貨；狀況可給免運費、不佔每日次數的條件（見 freeRushTerms）。
    */
   placeRushOrder(lines: readonly OrderLine[], terms: RushOrderTerms = STANDARD_RUSH_TERMS): Result<RushOrder> {
@@ -1003,10 +1004,14 @@ export class Game {
     this.changed();
   }
 
-  /** 準備階段 → 營業時段：店員從倉庫門出發 */
+  /** 準備階段 → 營業時段：送達到期的進貨單，店員從倉庫門出發 */
   openStore(): Result {
     if (this._phase !== 'prep') return fail('not-prep-phase');
     this._phase = 'open';
+    // 每張單照下單時記下的送達日，在那天開店時、顧客進門前送達倉庫
+    const due = this._pendingOrders.filter((o) => o.deliveryDay <= this._day);
+    for (const order of due) this.deliver(order);
+    this._pendingOrders = this._pendingOrders.filter((o) => o.deliveryDay > this._day);
     this._step = 0;
     this.stepRemainderMs = 0;
     this.agents = this._staff.map((s) => new StaffAgent(s.id, BACKROOM_DOOR));
@@ -1232,7 +1237,7 @@ export class Game {
 
   /** 營業時段 → 每日結算：支付固定支出並產生結算 */
   private closeStore(): void {
-    // 未送達的緊急叫貨轉為一般待送達進貨，下一個營業日開店前送達（ADR 0003）
+    // 未送達的緊急叫貨轉為一般待送達進貨，下一個營業日開店時送達（ADR 0003）
     this._pendingOrders = [
       ...this._pendingOrders,
       ...this.pendingRush.map(({ order }) => ({
@@ -1341,17 +1346,6 @@ export class Game {
     return batches.filter((b) => isExpired(b, this._day + 1)).reduce((sum, b) => sum + b.qty, 0);
   }
 
-  /** 各類別的現有庫存（倉庫與架上） */
-  private stockByCategory(): Partial<Record<CategoryId, number>> {
-    const inv = this.inventory.snapshot();
-    const stock: Partial<Record<CategoryId, number>> = {};
-    for (const b of [...inv.backroom, ...inv.displays.flatMap((d) => d.slots.flatMap((s) => s.batches))]) {
-      const category = productById(b.productId)?.category;
-      if (category) stock[category] = (stock[category] ?? 0) + b.qty;
-    }
-    return stock;
-  }
-
   /** 已解鎖、且有格位指定該類別商品的類別 */
   private displayedCategories(): CategoryId[] {
     const shown = new Set<CategoryId>();
@@ -1375,7 +1369,6 @@ export class Game {
             categories: this.displayedCategories(),
             history: this.goalHistory,
             expiringFresh: this.expiringAfterToday(),
-            stock: this.stockByCategory(),
           });
   }
 
@@ -1392,7 +1385,7 @@ export class Game {
     return reached;
   }
 
-  /** 每日結算 → 下一個營業日的準備階段：送達進貨、報廢過期鮮食 */
+  /** 每日結算 → 下一個營業日的準備階段（打烊後的前一晚）：報廢過期鮮食 */
   startNextDay(): Result {
     if (this._phase !== 'report') return fail('not-report-phase');
     this.previousIncidentKinds = this.ledger.incidents.map((i) => i.kind);
@@ -1401,10 +1394,6 @@ export class Game {
     this._phase = 'prep';
     this._step = 0;
     this.ledger = new DayLedger(this._day, this._funds);
-    // 每張單照下單時記下的送達日送達，送達日還沒到的留著
-    const due = this._pendingOrders.filter((o) => o.deliveryDay <= this._day);
-    for (const order of due) this.deliver(order);
-    this._pendingOrders = this._pendingOrders.filter((o) => o.deliveryDay > this._day);
     this.ledger.waste = summarizeWaste(this.inventory.removeBatches((b) => isExpired(b, this._day)));
     this.chooseDailyGoal();
     this.changed();
@@ -1415,7 +1404,7 @@ export class Game {
     this.inventory.receive(order.lines.map((l) => ({ productId: l.productId, qty: l.qty, arrivedDay: this._day })));
   }
 
-  /** 今天開始時報廢的商品 */
+  /** 進入今天的準備階段（前一天打烊後）時報廢的商品 */
   get todayWaste(): readonly WasteLine[] {
     return this.ledger.waste;
   }
@@ -1533,11 +1522,11 @@ export class Game {
     returnToBackroom: (batches) => this.inventory.receive(batches),
   };
 
-  /** 直接從倉庫補滿格位（略過店員）；回傳補上的數量。供測試布置情境用 */
-  restockSlot(fixtureId: string, index: number): number {
+  /** 直接從倉庫補貨到格位（略過店員），最多補到 upTo 個（預設補滿）；回傳補上的數量。供測試布置情境用 */
+  restockSlot(fixtureId: string, index: number, upTo = Infinity): number {
     const fixture = this.layout.get(fixtureId);
     if (!fixture) return 0;
-    const moved = this.inventory.restockSlot(fixtureId, index, FIXTURES[fixture.kind].slotCapacity);
+    const moved = this.inventory.restockSlot(fixtureId, index, Math.min(upTo, FIXTURES[fixture.kind].slotCapacity));
     if (moved > 0) this.changed();
     return moved;
   }
@@ -1554,11 +1543,6 @@ function summarizeWaste(batches: readonly { productId: string; qty: number }[]):
   const qty = new Map<string, number>();
   for (const b of batches) qty.set(b.productId, (qty.get(b.productId) ?? 0) + b.qty);
   return [...qty].map(([productId, q]) => ({ productId, qty: q, cost: q * (productById(productId)?.cost ?? 0) }));
-}
-
-/** 第 1 天準備階段下的進貨單是開幕進貨，當天立即送達 */
-export function isOpeningDelivery(day: number): boolean {
-  return day === 1;
 }
 
 export function sellRefund(kind: FixtureKind): number {

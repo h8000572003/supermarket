@@ -11,7 +11,7 @@ import { playThroughDay, runOpenHours, tickResolving } from './test-helpers';
 
 const STOCKED = ['cola', 'green-tea', 'chips', 'chocolate', 'cup-noodle', 'bowl-noodle'];
 
-/** 冷藏櫃 + 兩個貨架（起始三類）+ 收銀台 + 兩位店員，開幕進貨充足；停在第 1 天準備階段 */
+/** 冷藏櫃 + 兩個貨架（起始三類）+ 收銀台 + 兩位店員，已下充足的進貨（開店時送達）；停在第 1 天準備階段 */
 function store(options: Partial<GameOptions> & { seed: number; priceFactor?: number }) {
   const { priceFactor = 1, ...gameOptions } = options;
   const game = new Game(gameOptions);

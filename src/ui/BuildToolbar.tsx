@@ -209,7 +209,7 @@ function WideToolbar({ controller }: ToolbarProps) {
       {/* 提示放在工具列外，文字長短改變時按鈕位置不會跟著移動 */}
       <div className="toolbar-hint">
         {game.day === 1 && game.fixtures.length === 0 && tool.mode === 'select'
-          ? '先放冷藏櫃、貨架與收銀台，指定格位商品、進貨、雇店員，再按「開店」'
+          ? '先放冷藏櫃、貨架與收銀台，指定格位商品、進貨（開店時送達）、雇店員，再按「開店」'
           : tool.mode === 'place'
             ? coarse
               ? '點地板移動預覽，再按 ✓ 放置'

@@ -1065,6 +1065,12 @@ button {
   line-height: 1.25;
 }
 
+/* 準備階段（開店前一晚）的第二行 */
+.hud-night {
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
 /* 手機版準備階段：明日預報掛在狀態列左下方 */
 .hud-forecast {
   position: absolute;

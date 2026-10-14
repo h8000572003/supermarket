@@ -3,7 +3,7 @@ import { FIXTURES } from './catalog/fixtures';
 import { STEPS_PER_DAY, STEP_MS } from './clock/clock';
 import { Game } from './game';
 import { totalQty } from './inventory/batch';
-import { playThroughDay, runOpenHours, tickResolving } from './test-helpers';
+import { finishOpenHours, openStoreArranged, runOpenHours, tickResolving } from './test-helpers';
 
 const CAP = FIXTURES.fridge.slotCapacity;
 
@@ -21,15 +21,19 @@ function store({ staff = 1, slot3 = CAP, cola = 12, tea = 12 }: { staff?: number
   const fridge = place('fridge', { origin: { x: 6, y: 3 }, facing: 'south' });
   const register = place('register', { origin: { x: 5, y: 7 }, facing: 'west' });
   for (let i = 0; i < 4; i++) game.assignSlot(fridge, i, 'cola');
-  // 開幕進貨當天送達：先用剛好的量擺好格位，再補進倉庫的量
   game.submitPurchaseOrder([{ productId: 'cola', qty: 3 * CAP + slot3 }]);
-  for (let i = 0; i < 4; i++) game.restockSlot(fridge, i);
   const rest = [
     { productId: 'cola', qty: cola },
     { productId: 'green-tea', qty: tea },
   ].filter((l) => l.qty > 0);
   if (rest.length > 0) game.submitPurchaseOrder(rest);
-  playThroughDay(game);
+  // 第 1 天開店時送達：擺好格位，其餘留在倉庫；沒有店員與顧客，到打烊都不變
+  openStoreArranged(game, () => {
+    for (let i = 0; i < 3; i++) game.restockSlot(fridge, i);
+    game.restockSlot(fridge, 3, slot3);
+  });
+  finishOpenHours(game);
+  game.startNextDay();
   for (let i = 0; i < staff; i++) game.hireStaff();
   const qty = (slotIndex: number) => totalQty(game.slots(fridge)[slotIndex]?.batches ?? []);
   const product = (slotIndex: number) => game.slots(fridge)[slotIndex]?.productId;
@@ -52,7 +56,7 @@ function runToClose(game: Game): void {
 
 const STOCKED = ['cola', 'green-tea', 'chips', 'chocolate', 'cup-noodle', 'bowl-noodle'];
 
-/** 有顧客的店面（同 customers.test.ts 的布置），staff 位店員 */
+/** 有顧客的店面（同 customers.test.ts 的布置），staff 位店員；第 1 天已開店，開店時送達的貨已擺滿格位 */
 function busyStore(staff = 0) {
   const game = new Game({ seed: 5 });
   const place = (...args: Parameters<Game['placeFixture']>) => {
@@ -68,8 +72,10 @@ function busyStore(staff = 0) {
   ['chips', 'chips', 'chocolate', 'chocolate'].forEach((p, i) => game.assignSlot(shelfA, i, p));
   ['cup-noodle', 'cup-noodle', 'bowl-noodle', 'bowl-noodle'].forEach((p, i) => game.assignSlot(shelfB, i, p));
   game.submitPurchaseOrder(STOCKED.map((productId) => ({ productId, qty: 60 })));
-  for (const f of [fridge, shelfA, shelfB]) for (let i = 0; i < 4; i++) game.restockSlot(f, i);
   for (let i = 0; i < staff; i++) game.hireStaff();
+  openStoreArranged(game, () => {
+    for (const f of [fridge, shelfA, shelfB]) for (let i = 0; i < 4; i++) game.restockSlot(f, i);
+  });
   return { game, fridge, register };
 }
 
@@ -143,7 +149,6 @@ describe('換貨：發起', () => {
 describe('換貨：下架前', () => {
   it('舊商品留在架上，顧客照樣拿取', () => {
     const { game, fridge } = busyStore(); // 沒有店員：沒有人會來下架
-    game.openStore();
     // 兩格可樂都換成礦泉水：想買飲料的顧客只能拿可樂或綠茶
     game.assignSlot(fridge, 0, 'water');
     game.assignSlot(fridge, 2, 'water');
@@ -277,7 +282,6 @@ describe('換貨：店員工作的優先順序', () => {
 
   it('有人排隊的收銀台優先於下架', () => {
     const { game, fridge: f, register } = busyStore(1);
-    game.openStore();
     const agent = game.staffAgents[0]!;
     stepUntil(game, () => agent.activity === 'cashier' && game.queueLength(register) > 1);
     expect(game.phase).toBe('open');
@@ -470,7 +474,6 @@ describe('換貨：陳列庫存為 0', () => {
 
   it('換貨中舊商品賣光後再更改：立即生效，原本的換貨取消', () => {
     const { game, fridge } = busyStore(); // 沒有店員：沒有人會來下架
-    game.openStore();
     game.assignSlot(fridge, 0, 'water');
     stepUntil(game, () => totalQty(game.slots(fridge)[0]!.batches) === 0);
     expect(game.phase).toBe('open');

@@ -24,7 +24,7 @@ const day = (served: number, sales: Partial<Record<CategoryId, number>>, stockou
   stockoutEmpty,
 });
 
-/** 第 3 天（週三）晴，飲料、零食、泡麵都有陳列、庫存充足 */
+/** 第 3 天（週三）晴，飲料、零食、泡麵都有陳列 */
 function ctx(overrides: Partial<GoalContext> & { weather?: Weather; dayNumber?: number } = {}): GoalContext {
   const { weather = 'sunny', dayNumber = 3, ...rest } = overrides;
   return {
@@ -32,7 +32,6 @@ function ctx(overrides: Partial<GoalContext> & { weather?: Weather; dayNumber?: 
     categories: ['drink', 'snack', 'noodle'],
     history: [day(100, { drink: 60, snack: 40, noodle: 30 }), day(100, { drink: 60, snack: 40, noodle: 30 })],
     expiringFresh: 0,
-    stock: { drink: 200, snack: 200, noodle: 200, fresh: 200 },
     ...rest,
   };
 }
@@ -63,18 +62,10 @@ describe('目標數字', () => {
     expect(servedTarget(ctx({ history: [] }))).toBe(MIN_SERVED_TARGET);
   });
 
-  it('庫存的九成不到銷量目標時不出這個目標', () => {
-    // 目標 70，庫存 77 × 0.9 = 69.3 不夠
-    expect(sellTarget(ctx({ stock: { drink: 77 } }), 'drink')).toBeNull();
-    expect(sellTarget(ctx({ stock: { drink: 78 } }), 'drink')).toBe(70);
-    expect(kindsOf(ctx({ stock: { snack: 200, noodle: 200 } }))).not.toContain('sell:drink');
-  });
-
-  it('結帳人數目標不超過總庫存的九成（捨去到 5），但不低於最低值', () => {
+  it('結帳人數目標：最近平均 × 1.15，進位到 5', () => {
     // 100 × 1.15 = 115
     expect(servedTarget(ctx())).toBe(115);
-    expect(servedTarget(ctx({ stock: { drink: 50, snack: 30 } }))).toBe(70);
-    expect(servedTarget(ctx({ stock: { drink: 5 } }))).toBe(MIN_SERVED_TARGET);
+    expect(servedTarget(ctx({ history: [day(60, {}), day(80, {})] }))).toBe(85);
   });
 });
 
@@ -111,7 +102,6 @@ describe('目標池', () => {
       categories: ['drink', 'fresh', 'snack'],
       history,
       expiringFresh: 5,
-      stock: { drink: 999, fresh: 999, snack: 999 },
     });
     for (const { goal } of goalCandidates(c)) {
       if (goal.reward.type === 'funds') {

@@ -4,7 +4,7 @@ import type { CategoryId, ProductDef } from '../sim/catalog/products';
 import { FLASH_SALE_TIERS, MAX_FLASH_SALES } from '../sim/economy/flash-sale';
 import { ORDER_CUTOFF_MINUTE, SHIPPING_FEE, orderTotal } from '../sim/economy/purchase-order';
 import { RUSH_LAST_ORDER_MINUTE } from '../sim/economy/rush-order';
-import { isOpeningDelivery, phaseError } from '../sim/game';
+import { phaseError } from '../sim/game';
 import type { Controller } from './controller';
 import { FullScreenPage } from './FullScreenPage';
 import { useGameVersion } from './hooks';
@@ -78,7 +78,8 @@ function useStockOrder(controller: Controller) {
     },
     pendingQty: (productId: string) =>
       game.pendingOrders.flatMap((o) => o.lines).filter((l) => l.productId === productId).reduce((s, l) => s + l.qty, 0),
-    submitLabel: editable && isOpeningDelivery(game.day) ? '下單（開幕進貨，立即送達）' : '下單（明天開店前送達）',
+    // 準備階段是開店前一晚、營業中下的單隔天送達：兩者都是「明天開店前」
+    submitLabel: '下單（明天開店前送達）',
   };
 }
 

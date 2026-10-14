@@ -3,7 +3,7 @@ import { MAX_STEPS_PER_TICK, STEP_MS } from '../sim/clock/clock';
 import { Game } from '../sim/game';
 import { totalQty } from '../sim/inventory/batch';
 import { SNAPSHOT_VERSION } from '../sim/snapshot';
-import { playThroughDay, runOpenHours, tickResolving } from '../sim/test-helpers';
+import { openStoreArranged, playThroughDay, runOpenHours, tickResolving } from '../sim/test-helpers';
 import { SAVE_KEY, clearSave, loadGame, readSave, saveGame } from './save';
 
 class MemoryStorage {
@@ -116,11 +116,45 @@ describe('存檔與讀檔', () => {
     expect(loadGame(storage)!.dailyGoal).toBeNull();
   });
 
-  it('快照版本號遞增為 6', () => {
-    expect(SNAPSHOT_VERSION).toBe(6);
+  it('快照版本號遞增為 7', () => {
+    expect(SNAPSHOT_VERSION).toBe(7);
   });
 
-  it('v5 存檔（待送進貨單沒有送達日）遷移後讀得進來，待送單照常隔天送達', () => {
+  it('準備階段有待送進貨單時存讀檔，開店時送達倉庫', () => {
+    const storage = new MemoryStorage();
+    const game = establishedGame();
+    const before = game.backroomQty('cola');
+    expect(game.pendingOrders).toEqual([expect.objectContaining({ placedDay: game.day, deliveryDay: game.day })]);
+    saveGame(game, storage);
+    const loaded = loadGame(storage)!;
+    expect(loaded.pendingOrders).toEqual(game.pendingOrders);
+    expect(loaded.backroomQty('cola')).toBe(before);
+    loaded.openStore();
+    expect(loaded.backroomQty('cola')).toBe(before + 12);
+    expect(loaded.pendingOrders).toHaveLength(0);
+  });
+
+  it('v6 存檔（待送單在進入準備階段時送達）遷移後，待送單改於這次開店時送達', () => {
+    const storage = new MemoryStorage();
+    const game = establishedGame();
+    const current = game.snapshot()!;
+    // v6 的規則：準備階段下的單隔天送達
+    const v6 = {
+      ...current,
+      version: 6,
+      pendingOrders: current.pendingOrders.map((o) => ({ ...o, deliveryDay: o.placedDay + 1 })),
+    };
+    storage.setItem(SAVE_KEY, JSON.stringify(v6));
+    const loaded = loadGame(storage)!;
+    expect(loaded.snapshot()).toEqual(current);
+    expect(loaded.pendingOrders.every((o) => o.deliveryDay === loaded.day)).toBe(true);
+    const before = loaded.backroomQty('cola');
+    loaded.openStore();
+    expect(loaded.backroomQty('cola')).toBe(before + 12);
+    expect(loaded.pendingOrders).toHaveLength(0);
+  });
+
+  it('v5 存檔（待送進貨單沒有送達日）遷移後讀得進來，待送單於這次開店時送達', () => {
     const storage = new MemoryStorage();
     const game = establishedGame();
     const current = game.snapshot()!;
@@ -134,8 +168,8 @@ describe('存檔與讀檔', () => {
     const loaded = loadGame(storage)!;
     expect(loaded).not.toBeNull();
     expect(loaded.snapshot()).toEqual(current);
-    expect(loaded.pendingOrders.every((o) => o.deliveryDay === o.placedDay + 1)).toBe(true);
-    playThroughDay(loaded);
+    expect(loaded.pendingOrders.every((o) => o.deliveryDay === loaded.day)).toBe(true);
+    loaded.openStore();
     expect(loaded.pendingOrders).toHaveLength(0);
   });
 
@@ -226,19 +260,24 @@ describe('存檔與讀檔', () => {
     expect(saveGame(game, storage)).toBe(true);
     const loaded = loadGame(storage)!;
     expect(loaded.snapshot()).toEqual(game.snapshot());
-    expect(loaded.snapshot()!.inventory.backroom).toContainEqual({ productId: 'chips', qty: 12, arrivedDay: loaded.day });
+    expect(loaded.pendingOrders).toEqual([
+      expect.objectContaining({ lines: [{ productId: 'chips', qty: 12 }], deliveryDay: loaded.day }),
+    ]);
+    // 存讀檔後開店時送達
+    const before = loaded.backroomQty('chips');
+    loaded.openStore();
+    expect(loaded.backroomQty('chips')).toBe(before + 12);
+    expect(loaded.pendingOrders).toHaveLength(0);
   });
 
   it('營業中換貨後打烊，進入準備階段存讀檔：換貨已完成、狀態相等、版本號不變', () => {
     const storage = new MemoryStorage();
     const game = establishedGame();
     const fridge = game.fixtures.find((f) => f.kind === 'fridge')!.id;
-    // 陳列庫存為 0 的格位換貨會立即生效：等隔天可樂送達、先擺上架。
+    // 陳列庫存為 0 的格位換貨會立即生效：開店時可樂送達、先擺上架。
     // 沒有店員來下架，換貨留到打烊時直接完成
-    playThroughDay(game);
     for (const s of game.staff) game.fireStaff(s.id);
-    game.restockSlot(fridge, 0);
-    game.openStore();
+    openStoreArranged(game, () => game.restockSlot(fridge, 0));
     expect(game.slots(fridge)[0]!.productId).toBe('cola');
     expect(totalQty(game.slots(fridge)[0]!.batches)).toBeGreaterThan(0);
     expect(game.assignSlot(fridge, 0, 'water').ok).toBe(true);

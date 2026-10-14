@@ -32,7 +32,7 @@ export function DailyReportPanel({ game }: { game: Game }) {
     </button>
   ) : (
     <button className="primary" onClick={() => game.startNextDay()}>
-      開始第 {report.day + 1} 天
+      打烊，準備明天
     </button>
   );
 
@@ -174,7 +174,7 @@ export function DailyReportPanel({ game }: { game: Game }) {
         )}
         {report.waste.length > 0 && (
           <p className="report-note">
-            今天開店前報廢：
+            昨天打烊後報廢：
             {report.waste.map((w) => `${productById(w.productId)?.name} ${w.qty} 個`).join('、')}
           </p>
         )}
@@ -182,7 +182,7 @@ export function DailyReportPanel({ game }: { game: Game }) {
     </>
   );
 
-  // 手機版：全螢幕頁面，「開始下一天」固定在底部
+  // 手機版：全螢幕頁面，「打烊，準備明天」固定在底部
   if (narrow) {
     return (
       <FullScreenPage title={title} label={`第 ${report.day} 天每日結算`} footer={next}>

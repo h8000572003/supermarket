@@ -28,6 +28,11 @@ export const calmOption: IncidentChooser = (incident) => {
 export function runOpenHours(game: Game, choose: IncidentChooser = calmOption): void {
   const r = game.openStore();
   if (!r.ok) throw new Error(r.error);
+  finishOpenHours(game, choose);
+}
+
+/** 從營業時段的目前時刻跑到打烊，停在每日結算；途中發生的狀況以 choose 處理 */
+export function finishOpenHours(game: Game, choose: IncidentChooser = calmOption): void {
   while (game.phase === 'open') {
     const incident = game.pendingIncident;
     if (incident) {
@@ -40,6 +45,16 @@ export function runOpenHours(game: Game, choose: IncidentChooser = calmOption): 
     if (game.speed === 0) throw new Error('runOpenHours: 倍速為 0');
     game.tick((STEP_MS * MAX_STEPS_PER_TICK) / game.speed);
   }
+}
+
+/**
+ * 開店：準備階段下的進貨單此時送達倉庫；再以 arrange 直接布置（例如 restockSlot 把倉庫的貨擺上格位），
+ * 此時顧客與店員都還沒開始動作，相當於開店前已擺好貨。
+ */
+export function openStoreArranged(game: Game, arrange: () => void): void {
+  const r = game.openStore();
+  if (!r.ok) throw new Error(r.error);
+  arrange();
 }
 
 /** 推進一次 tick；若有狀況等待選擇，先以 choose 處理（逐步推進營業時段的測試用，避免卡在等待選擇） */

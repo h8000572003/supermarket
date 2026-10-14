@@ -30,7 +30,7 @@ describe('營業中下一般進貨單（ADR 0005）', () => {
     expect(ORDER_CUTOFF_MINUTE).toBe(at(18));
   });
 
-  it('18:00 前下單：立即付款，當天不送達，下一個營業日開店前送達', () => {
+  it('18:00 前下單：立即付款，當天不送達，下一個營業日開店時送達', () => {
     const game = day2();
     game.openStore();
     tickUntil(game, at(10));
@@ -44,6 +44,8 @@ describe('營業中下一般進貨單（ADR 0005）', () => {
     expect(game.backroomQty('cola')).toBe(0);
     game.startNextDay();
     expect(game.day).toBe(3);
+    expect(game.backroomQty('cola')).toBe(0);
+    game.openStore();
     expect(game.backroomQty('cola')).toBe(24);
     expect(game.pendingOrders).toHaveLength(0);
   });
@@ -99,7 +101,7 @@ describe('營業中下一般進貨單（ADR 0005）', () => {
     expect(game.pendingOrders).toHaveLength(0);
   });
 
-  it('第 1 天營業中下的單不是開幕進貨，下一個營業日才送達', () => {
+  it('第 1 天營業中下的單同樣在下一個營業日開店時才送達', () => {
     const game = new Game({ seed: 3, customerArrivals: false });
     game.openStore();
     tickUntil(game, at(9));
@@ -108,6 +110,8 @@ describe('營業中下一般進貨單（ADR 0005）', () => {
     expect(game.backroomQty('cola')).toBe(0);
     finishOpenHours(game);
     game.startNextDay();
+    expect(game.backroomQty('cola')).toBe(0);
+    game.openStore();
     expect(game.backroomQty('cola')).toBe(12);
   });
 

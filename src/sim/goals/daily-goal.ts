@@ -4,7 +4,7 @@ import type { Rng } from '../rng';
 import type { DayConditions } from '../weather/weather';
 
 /**
- * 每日目標（見 CONTEXT.md）：第 2 天起每天準備階段出現一個、只限當天，打烊時判定。
+ * 每日目標（見 CONTEXT.md）：第 2 天起每天準備階段（開店前一晚）出現一個、只限即將開店的那一天，打烊時判定。
  * 不是里程碑：不解鎖任何東西，沒達成也不扣分。
  */
 export type DailyGoalKind =
@@ -14,7 +14,7 @@ export type DailyGoalKind =
   | 'served'
   /** 沒有顧客因缺貨空手離開 */
   | 'no-stockout-empty'
-  /** 打烊前賣完今天到期的鮮食，明天開店前零報廢 */
+  /** 打烊前賣完今天到期的鮮食，打烊後零報廢 */
   | 'zero-waste';
 
 export type DailyGoalReward =
@@ -74,8 +74,6 @@ export const MIN_SELL_TARGET = 10;
 export const MIN_SERVED_TARGET = 20;
 /** 目標比最近平均高出的比例：可達成但要用心 */
 const STRETCH = 1.15;
-/** 銷量與結帳人數目標最多是準備階段現有庫存（倉庫與架上）的這個比例，確保今天賣得到 */
-const MAX_STOCK_SHARE = 0.9;
 /** 最近因缺貨空手離開的平均人數不超過這個數，才出「沒有顧客因缺貨空手離開」 */
 const MAX_RECENT_STOCKOUT_EMPTY = 4;
 
@@ -101,8 +99,6 @@ export interface GoalContext {
   readonly history: readonly GoalDayStats[];
   /** 今天打烊後就會過期的鮮食件數（倉庫與架上） */
   readonly expiringFresh: number;
-  /** 準備階段各類別的現有庫存（倉庫與架上） */
-  readonly stock: Readonly<Partial<Record<CategoryId, number>>>;
 }
 
 interface Candidate {
@@ -120,22 +116,20 @@ const reputationReward: DailyGoalReward = { type: 'reputation', delta: REPUTATIO
 
 /**
  * 賣出某類別的目標件數：最近平均銷量 × 天氣星期倍率 × 1.15，進位到 5，至少 MIN_SELL_TARGET。
- * 現有庫存的九成不到目標時回傳 null（今天賣不到，不出這個目標）
+ * 不看準備階段的現有庫存：目標在開店前一晚出現，店長還能下單備貨，貨在開店時送達。
  */
-export function sellTarget(ctx: GoalContext, category: CategoryId): number | null {
+export function sellTarget(ctx: GoalContext, category: CategoryId): number {
   const recent = average(ctx.history.map((d) => d.sales[category] ?? 0));
-  const target = Math.max(MIN_SELL_TARGET, roundUpTo5(recent * expectedFactor(ctx.conditions, category) * STRETCH));
-  return (ctx.stock[category] ?? 0) * MAX_STOCK_SHARE >= target ? target : null;
+  return Math.max(MIN_SELL_TARGET, roundUpTo5(recent * expectedFactor(ctx.conditions, category) * STRETCH));
 }
 
-/** 結帳人數目標：最近平均結帳人數 × 天氣星期倍率 × 1.15（不超過總庫存的九成），進位到 5，至少 MIN_SERVED_TARGET */
+/**
+ * 結帳人數目標：最近平均結帳人數 × 天氣星期倍率 × 1.15，進位到 5，至少 MIN_SERVED_TARGET。
+ * 同銷量目標，不看準備階段的現有庫存（前一晚還能下單備貨）。
+ */
 export function servedTarget(ctx: GoalContext): number {
   const recent = average(ctx.history.map((d) => d.served));
-  const wanted = roundUpTo5(recent * expectedFactor(ctx.conditions, null) * STRETCH);
-  // 每位結帳的顧客至少買一件：不超過現有總庫存的九成（捨去到 5），庫存少時目標也跟著降
-  const totalStock = Object.values(ctx.stock).reduce((s, n) => s + (n ?? 0), 0);
-  const cap = Math.floor((totalStock * MAX_STOCK_SHARE) / 5) * 5;
-  return Math.max(MIN_SERVED_TARGET, Math.min(wanted, cap));
+  return Math.max(MIN_SERVED_TARGET, roundUpTo5(recent * expectedFactor(ctx.conditions, null) * STRETCH));
 }
 
 /** 熱天飲料、冷天泡麵的銷量目標特別容易出現；週末偏向家庭會買的鮮食與日用品 */
@@ -153,7 +147,6 @@ export function goalCandidates(ctx: GoalContext): Candidate[] {
   const candidates: Candidate[] = [];
   for (const category of ctx.categories) {
     const target = sellTarget(ctx, category);
-    if (target === null) continue;
     candidates.push({
       weight: sellWeight(conditions, category),
       goal: { kind: 'sell-category', category, target, reward: fundsReward(target * 20) },

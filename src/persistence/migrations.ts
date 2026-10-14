@@ -14,6 +14,16 @@ const MIGRATIONS: Readonly<Record<number, (s: RawSnapshot) => RawSnapshot>> = {
     version: 6,
     pendingOrders: (s.pendingOrders as { placedDay: number }[]).map((o) => ({ ...o, deliveryDay: o.placedDay + 1 })),
   }),
+  // v7：準備階段改為開店前一晚，進貨於送達日開店時送達（原本在進入準備階段時送達）。
+  // v6 存檔停在第 day 天的準備階段，待送單都是之後才送達；一律改為這次開店時送達
+  6: (s) => ({
+    ...s,
+    version: 7,
+    pendingOrders: (s.pendingOrders as { deliveryDay: number }[]).map((o) => ({
+      ...o,
+      deliveryDay: Math.min(o.deliveryDay, s.day as number),
+    })),
+  }),
 };
 
 /**

@@ -5,7 +5,7 @@ import { DAILY_RENT, DAILY_WAGE, Game, MAX_STAFF } from './game';
 import { totalQty } from './inventory/batch';
 import { playThroughDay, runOpenHours, tickResolving } from './test-helpers';
 
-/** 冷藏櫃（4 格）放可樂；倉庫有 qty 瓶可樂（第 2 天送達） */
+/** 冷藏櫃（4 格）放可樂；倉庫有 qty 瓶可樂（第 1 天開店時送達）；停在第 2 天準備階段 */
 function storeWithCola(qty: number, staffCount: number) {
   const game = new Game({ seed: 1, customerArrivals: false });
   const fridge = game.placeFixture('fridge', { origin: { x: 6, y: 3 }, facing: 'south' });

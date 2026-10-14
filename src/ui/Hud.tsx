@@ -28,25 +28,38 @@ function Conditions({ conditions }: { conditions: DayConditions }) {
   );
 }
 
-/** 準備階段的明日預報，例如「明日 ☂ 週二」 */
+/** 準備階段（前一晚）的明日預報：即將開店那天的天氣與星期，例如「明天 ☂ 週二」 */
 function Forecast({ conditions }: { conditions: DayConditions }) {
   return (
     <span
       className={`forecast${conditions.weekend ? ' weekend' : ''}`}
-      title={`明日預報：${describeConditions(conditions)}`}
-      aria-label={`明日預報：${describeConditions(conditions)}`}
+      title={`明日預報（即將開店）：${describeConditions(conditions)}`}
+      aria-label={`明日預報（即將開店）：${describeConditions(conditions)}`}
     >
-      明日 {formatConditions(conditions)}
+      明天 {formatConditions(conditions)}
     </span>
   );
 }
 
+/** 準備階段是開店前一晚，每日目標是明天（即將開店那天）的；營業中與結算時是今天的 */
+const goalDayLabel = (phase: Phase) => (phase === 'prep' ? '明日目標' : '今日目標');
+
 /**
- * 今天的每日目標：準備階段顯示完整說明與獎勵，營業中只顯示短字與進度（例如「🎯 飲料 12/40」）。
+ * 即將開店（準備階段）或今天的每日目標：準備階段顯示完整說明與獎勵，營業中只顯示短字與進度（例如「🎯 飲料 12/40」）。
  * onOpen 時點一下打開「目標」面板
  */
-function GoalChip({ goal, compact, onOpen }: { goal: DailyGoalStatus; compact: boolean; onOpen?: () => void }) {
-  const label = `今日目標：${goal.description}，目前 ${formatGoalCount(goal)}，獎勵 ${formatGoalReward(goal.reward)}`;
+function GoalChip({
+  goal,
+  phase,
+  compact,
+  onOpen,
+}: {
+  goal: DailyGoalStatus;
+  phase: Phase;
+  compact: boolean;
+  onOpen?: () => void;
+}) {
+  const label = `${goalDayLabel(phase)}：${goal.description}，目前 ${formatGoalCount(goal)}，獎勵 ${formatGoalReward(goal.reward)}`;
   const content = compact ? (
     <>
       <span aria-hidden="true">🎯</span> {formatGoalShort(goal)}
@@ -74,7 +87,7 @@ function GoalChip({ goal, compact, onOpen }: { goal: DailyGoalStatus; compact: b
 }
 
 const PHASE_LABEL: Record<Phase, string> = {
-  prep: '準備階段',
+  prep: '準備階段（前一晚）',
   open: '營業中',
   report: '每日結算',
   gameover: '已破產',
@@ -139,13 +152,22 @@ function CompactHud({ controller, sounds, onOpenMilestones }: HudProps) {
         aria-expanded={expanded}
         aria-label="店舖狀態，點一下展開詳細資訊"
       >
-        {/* 天數與今天的天氣、星期疊成兩行，讓營業中的時鐘與資金仍放得下 */}
-        <span className="hud-date">
-          <span>第 {game.day} 天</span>
-          <Conditions conditions={game.today} />
-        </span>
-        {/* 準備階段的時鐘固定在開店時刻，改在狀態列下方顯示明日預報 */}
-        {game.phase !== 'prep' && <span className="clock">{formatTime(game.minuteOfDay)}</span>}
+        {/* 天數與今天的天氣、星期疊成兩行，讓營業中的時鐘與資金仍放得下。
+            準備階段是開店前一晚：不顯示時鐘與天氣，改在狀態列下方顯示明天（即將開店）的預報 */}
+        {game.phase === 'prep' ? (
+          <span className="hud-date">
+            <span>第 {game.day} 天開店前</span>
+            <span className="hud-night">前一晚</span>
+          </span>
+        ) : (
+          <>
+            <span className="hud-date">
+              <span>第 {game.day} 天</span>
+              <Conditions conditions={game.today} />
+            </span>
+            <span className="clock">{formatTime(game.minuteOfDay)}</span>
+          </>
+        )}
         <strong className={game.funds < 0 ? 'negative' : ''}>{formatMoney(game.funds)}</strong>
       </button>
       <span className="hud-primary">
@@ -180,18 +202,18 @@ function CompactHud({ controller, sounds, onOpenMilestones }: HudProps) {
       </span>
       {(game.phase === 'prep' || (game.phase === 'open' && game.dailyGoal)) && !expanded && !menuOpen && (
         <div className="hud-forecast">
-          {game.phase === 'prep' && <Forecast conditions={game.forecast} />}
-          {game.dailyGoal && <GoalChip goal={game.dailyGoal} compact={game.phase !== 'prep'} />}
+          {game.phase === 'prep' && <Forecast conditions={game.today} />}
+          {game.dailyGoal && <GoalChip goal={game.dailyGoal} phase={game.phase} compact={game.phase !== 'prep'} />}
         </div>
       )}
       {expanded && (
         <div className="hud-details" role="status">
           <span>{PHASE_LABEL[game.phase]}</span>
-          {game.phase === 'prep' && <Forecast conditions={game.forecast} />}
+          {game.phase === 'prep' && <Forecast conditions={game.today} />}
           <span>口碑 {Math.round(game.reputation)}</span>
           {game.dailyGoal && (
             <span>
-              今日目標：{game.dailyGoal.description}（{formatGoalCount(game.dailyGoal)}，獎勵{' '}
+              {goalDayLabel(game.phase)}：{game.dailyGoal.description}（{formatGoalCount(game.dailyGoal)}，獎勵{' '}
               {formatGoalReward(game.dailyGoal.reward)}）
             </span>
           )}
@@ -247,9 +269,9 @@ function WideHud({ controller, sounds, onOpenStock, onOpenMilestones }: HudProps
         {game.phase === 'prep' && (
           <button onClick={confirmNewGame}>新遊戲</button>
         )}
-        {game.phase === 'prep' && <Forecast conditions={game.forecast} />}
+        {game.phase === 'prep' && <Forecast conditions={game.today} />}
         {game.phase === 'prep' && game.dailyGoal && (
-          <GoalChip goal={game.dailyGoal} compact={false} onOpen={onOpenMilestones} />
+          <GoalChip goal={game.dailyGoal} phase={game.phase} compact={false} onOpen={onOpenMilestones} />
         )}
         {game.phase === 'prep' && (
           <button className="primary" onClick={openStore}>
@@ -267,7 +289,15 @@ function WideHud({ controller, sounds, onOpenStock, onOpenMilestones }: HudProps
         )}
       </span>
       <span className="hud-meta">
-        第 {game.day} 天 <Conditions conditions={game.today} /> · {PHASE_LABEL[game.phase]} · <span className="clock">{formatTime(game.minuteOfDay)}</span>
+        {game.phase === 'prep' ? (
+          // 準備階段是開店前一晚：沒有時鐘，天氣看「明天」預報
+          <>第 {game.day} 天開店前 · 前一晚</>
+        ) : (
+          <>
+            第 {game.day} 天 <Conditions conditions={game.today} /> · {PHASE_LABEL[game.phase]} ·{' '}
+            <span className="clock">{formatTime(game.minuteOfDay)}</span>
+          </>
+        )}
         {game.phase === 'open' && (
           <>
             {' '}
@@ -275,7 +305,7 @@ function WideHud({ controller, sounds, onOpenStock, onOpenMilestones }: HudProps
             {game.dailyGoal && (
               <>
                 {' '}
-                · <GoalChip goal={game.dailyGoal} compact />
+                · <GoalChip goal={game.dailyGoal} phase={game.phase} compact />
               </>
             )}
           </>

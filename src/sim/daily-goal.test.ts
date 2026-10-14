@@ -184,7 +184,7 @@ describe('進度', () => {
     expect(report.dailyGoal!.met).toBe(expected >= goal.target);
   });
 
-  it('目標數字隨店況調整：最低值以上，且不超過現有庫存', () => {
+  it('目標數字隨店況調整：不低於最低值', () => {
     const { game, close, next } = stockedStore(4);
     close();
     next();

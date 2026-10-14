@@ -29,7 +29,7 @@ function goodStore(seed = 1) {
     playThroughDay(game);
     for (const f of displays) for (let i = 0; i < 4; i++) game.restockSlot(f, i);
   };
-  day(); // 第 1 天：開幕進貨當天送達
+  day(); // 第 1 天：前一晚下的單開店時送達
   return { game, day };
 }
 

@@ -4,7 +4,7 @@ import { STEP_MS } from './clock/clock';
 import { Game } from './game';
 import type { DispatchTarget } from './game';
 import { totalQty } from './inventory/batch';
-import { playThroughDay, tickResolving } from './test-helpers';
+import { finishOpenHours, openStoreArranged, tickResolving } from './test-helpers';
 
 const CAP = FIXTURES.fridge.slotCapacity;
 
@@ -23,13 +23,18 @@ function store({ staff = 1, slot3 = CAP, cola = 12, tea = 12 }: { staff?: number
   place('register', { origin: { x: 5, y: 7 }, facing: 'west' });
   for (let i = 0; i < 4; i++) game.assignSlot(fridge, i, 'cola');
   game.submitPurchaseOrder([{ productId: 'cola', qty: 3 * CAP + slot3 }]);
-  for (let i = 0; i < 4; i++) game.restockSlot(fridge, i);
   const rest = [
     { productId: 'cola', qty: cola },
     { productId: 'green-tea', qty: tea },
   ].filter((l) => l.qty > 0);
   if (rest.length > 0) game.submitPurchaseOrder(rest);
-  playThroughDay(game);
+  // 第 1 天開店時送達：擺好格位，其餘留在倉庫；沒有店員與顧客，到打烊都不變
+  openStoreArranged(game, () => {
+    for (let i = 0; i < 3; i++) game.restockSlot(fridge, i);
+    game.restockSlot(fridge, 3, slot3);
+  });
+  finishOpenHours(game);
+  game.startNextDay();
   for (let i = 0; i < staff; i++) game.hireStaff();
   const slot = (slotIndex: number): DispatchTarget => ({ kind: 'slot', fixtureId: fridge, slotIndex });
   const qty = (slotIndex: number) => totalQty(game.slots(fridge)[slotIndex]?.batches ?? []);

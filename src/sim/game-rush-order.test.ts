@@ -135,7 +135,7 @@ describe('緊急叫貨', () => {
     expect(game.rushOrdersLeftToday).toBe(1);
   });
 
-  it('打烊前未送達者轉為一般待送達進貨，於下一個營業日開店前送達', () => {
+  it('打烊前未送達者轉為一般待送達進貨，於下一個營業日開店時送達', () => {
     const game = day2();
     game.openStore();
     tickUntil(game, at(21, 30));
@@ -146,7 +146,11 @@ describe('緊急叫貨', () => {
     expect(game.pendingOrders.flatMap((o) => o.lines)).toEqual([{ productId: 'cola', qty: 12 }]);
     expect(game.pendingOrders[0]!.deliveryDay).toBe(game.day + 1);
 
+    // 打烊後的準備階段（前一晚）還沒送到，隔天開店時送達
     game.startNextDay();
+    expect(game.backroomQty('cola')).toBe(0);
+    expect(game.pendingOrders).toHaveLength(1);
+    game.openStore();
     expect(game.backroomQty('cola')).toBe(12);
     expect(game.pendingOrders).toHaveLength(0);
   });
@@ -170,6 +174,12 @@ describe('緊急叫貨', () => {
     game.openStore();
     tickUntil(game, at(21, 30));
     game.placeRushOrder([{ productId: 'sandwich', qty: 6 }]);
+    finishOpenHours(game);
+    game.startNextDay();
+    expect(game.backroomQty('sandwich')).toBe(0);
+    // 第 3 天開店時送達；快照只在準備階段可讀，跑完第 3 天再看（沒有店員與顧客，倉庫不變）
+    game.openStore();
+    expect(game.backroomQty('sandwich')).toBe(6);
     finishOpenHours(game);
     game.startNextDay();
     expect(game.snapshot()!.inventory.backroom.filter((b) => b.productId === 'sandwich')).toEqual([

@@ -4,12 +4,12 @@ import { STEP_MS } from './clock/clock';
 import { MAX_DISPATCHES, Game } from './game';
 import type { DispatchTarget } from './game';
 import { totalQty } from './inventory/batch';
-import { runOpenHours, tickResolving } from './test-helpers';
+import { finishOpenHours, openStoreArranged, runOpenHours, tickResolving } from './test-helpers';
 
 const CAP = FIXTURES.fridge.slotCapacity;
 
 /**
- * 第 1 天準備階段、沒有顧客：冷藏櫃 4 格都放可樂，收銀台一台。
+ * 第 2 天準備階段、沒有顧客：冷藏櫃 4 格都放可樂，收銀台一台。
  * 格位 0 有 4 瓶（高於補貨門檻、未滿）、格位 1、2 已滿、格位 3 空著；倉庫有 backroom 瓶。
  */
 function store({ staff = 1, backroom = 12 }: { staff?: number; backroom?: number } = {}) {
@@ -22,12 +22,16 @@ function store({ staff = 1, backroom = 12 }: { staff?: number; backroom?: number
   const fridge = place('fridge', { origin: { x: 6, y: 3 }, facing: 'south' });
   const register = place('register', { origin: { x: 5, y: 7 }, facing: 'west' });
   for (let i = 0; i < 4; i++) game.assignSlot(fridge, i, 'cola');
-  // 開幕進貨當天送達：先用 24 瓶擺好格位，再補進倉庫的量
   game.submitPurchaseOrder([{ productId: 'cola', qty: 24 }]);
-  game.restockSlot(fridge, 1);
-  game.restockSlot(fridge, 2);
-  game.restockSlot(fridge, 0);
   if (backroom > 0) game.submitPurchaseOrder([{ productId: 'cola', qty: backroom }]);
+  // 第 1 天開店時送達：用 24 瓶擺好格位，其餘留在倉庫；沒有店員與顧客，到打烊都不變
+  openStoreArranged(game, () => {
+    game.restockSlot(fridge, 1);
+    game.restockSlot(fridge, 2);
+    game.restockSlot(fridge, 0, 24 - 2 * CAP);
+  });
+  finishOpenHours(game);
+  game.startNextDay();
   for (let i = 0; i < staff; i++) game.hireStaff();
   const slot = (slotIndex: number): DispatchTarget => ({ kind: 'slot', fixtureId: fridge, slotIndex });
   const qty = (slotIndex: number) => totalQty(game.slots(fridge)[slotIndex]?.batches ?? []);
@@ -178,7 +182,7 @@ describe('派工', () => {
 describe('派工與有人排隊的收銀台', () => {
   const STOCKED = ['cola', 'green-tea', 'chips', 'chocolate', 'cup-noodle', 'bowl-noodle'];
 
-  /** 有顧客的店面（同 customers.test.ts 的布置），只有 1 位店員 */
+  /** 有顧客的店面（同 customers.test.ts 的布置），只有 1 位店員；第 1 天已開店，開店時送達的貨已擺滿格位 */
   function busyStore() {
     const game = new Game({ seed: 5 });
     const place = (...args: Parameters<Game['placeFixture']>) => {
@@ -194,14 +198,15 @@ describe('派工與有人排隊的收銀台', () => {
     ['chips', 'chips', 'chocolate', 'chocolate'].forEach((p, i) => game.assignSlot(shelfA, i, p));
     ['cup-noodle', 'cup-noodle', 'bowl-noodle', 'bowl-noodle'].forEach((p, i) => game.assignSlot(shelfB, i, p));
     game.submitPurchaseOrder(STOCKED.map((productId) => ({ productId, qty: 60 })));
-    for (const f of [fridge, shelfA, shelfB]) for (let i = 0; i < 4; i++) game.restockSlot(f, i);
     game.hireStaff();
+    openStoreArranged(game, () => {
+      for (const f of [fridge, shelfA, shelfB]) for (let i = 0; i < 4; i++) game.restockSlot(f, i);
+    });
     return { game, displays: [fridge, shelfA, shelfB], register };
   }
 
   it('有人排隊的收銀台仍優先於派工標記', () => {
     const { game, displays, register } = busyStore();
-    game.openStore();
     const agent = game.staffAgents[0]!;
     // 等到店員正在收銀、隊伍裡還有人
     stepUntil(game, () => agent.activity === 'cashier' && game.queueLength(register) > 1);
@@ -226,7 +231,6 @@ describe('派工與有人排隊的收銀台', () => {
 
   it('派工途中（尚未取貨）出現排隊，店員改去收銀', () => {
     const { game, displays, register } = busyStore();
-    game.openStore();
     const agent = game.staffAgents[0]!;
     let pulled = false;
     let sawDispatchTask = false;

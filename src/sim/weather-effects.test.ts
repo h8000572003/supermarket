@@ -12,7 +12,7 @@ import type { Weather } from './weather/weather';
 const STOCKED = ['cola', 'green-tea', 'chips', 'chocolate', 'cup-noodle', 'bowl-noodle'];
 
 /**
- * 冷藏櫃 + 兩個貨架（起始三類）+ 收銀台 + 兩位店員，開幕進貨充足；停在第 1 天準備階段。
+ * 冷藏櫃 + 兩個貨架（起始三類）+ 收銀台 + 兩位店員，已下充足的進貨（開店時送達）；停在第 1 天準備階段。
  * 第 1 天沒有狀況，適合在同種子下只改天氣或星期來比較。
  */
 function store(options: Partial<GameOptions> & { seed: number }) {
