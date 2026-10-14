@@ -4,7 +4,7 @@ import { Game } from '../sim/game';
 import { totalQty } from '../sim/inventory/batch';
 import { SNAPSHOT_VERSION } from '../sim/snapshot';
 import { playThroughDay, runOpenHours, tickResolving } from '../sim/test-helpers';
-import { SAVE_KEY, clearSave, loadGame, saveGame } from './save';
+import { SAVE_KEY, clearSave, loadGame, readSave, saveGame } from './save';
 
 class MemoryStorage {
   readonly data = new Map<string, string>();
@@ -116,8 +116,30 @@ describe('存檔與讀檔', () => {
     expect(loadGame(storage)!.dailyGoal).toBeNull();
   });
 
-  it('快照版本號遞增為 5；前一版（沒有每日目標欄位）的存檔直接捨棄', () => {
-    expect(SNAPSHOT_VERSION).toBe(5);
+  it('快照版本號遞增為 6', () => {
+    expect(SNAPSHOT_VERSION).toBe(6);
+  });
+
+  it('v5 存檔（待送進貨單沒有送達日）遷移後讀得進來，待送單照常隔天送達', () => {
+    const storage = new MemoryStorage();
+    const game = establishedGame();
+    const current = game.snapshot()!;
+    expect(current.pendingOrders.length).toBeGreaterThan(0);
+    const v5 = {
+      ...current,
+      version: 5,
+      pendingOrders: current.pendingOrders.map((o) => ({ lines: o.lines, placedDay: o.placedDay, total: o.total })),
+    };
+    storage.setItem(SAVE_KEY, JSON.stringify(v5));
+    const loaded = loadGame(storage)!;
+    expect(loaded).not.toBeNull();
+    expect(loaded.snapshot()).toEqual(current);
+    expect(loaded.pendingOrders.every((o) => o.deliveryDay === o.placedDay + 1)).toBe(true);
+    playThroughDay(loaded);
+    expect(loaded.pendingOrders).toHaveLength(0);
+  });
+
+  it('v4（沒有每日目標欄位，早於可遷移的最舊版本）的存檔無法讀取', () => {
     const storage = new MemoryStorage();
     const old = { ...establishedGame().snapshot()!, version: 4 } as Record<string, unknown>;
     delete old.dailyGoal;
@@ -125,7 +147,7 @@ describe('存檔與讀檔', () => {
     expect(loadGame(storage)).toBeNull();
   });
 
-  it('更舊的版本（沒有天氣欄位）的存檔直接捨棄', () => {
+  it('更舊的版本（沒有天氣欄位）的存檔無法讀取', () => {
     const storage = new MemoryStorage();
     const old = { ...establishedGame().snapshot()!, version: 3 } as Record<string, unknown>;
     delete old.weather;
@@ -133,7 +155,7 @@ describe('存檔與讀檔', () => {
     expect(loadGame(storage)).toBeNull();
   });
 
-  it('舊版本（沒有狀況欄位）的存檔直接捨棄', () => {
+  it('舊版本（沒有狀況欄位）的存檔無法讀取', () => {
     const storage = new MemoryStorage();
     const old = { ...establishedGame().snapshot()!, version: 2 } as Record<string, unknown>;
     delete old.previousIncidentKinds;
@@ -158,7 +180,35 @@ describe('存檔與讀檔', () => {
     expect(loadGame(storage)).toBeNull();
   });
 
+  it('區分沒有存檔、讀取成功與無法讀取', () => {
+    const storage = new MemoryStorage();
+    expect(readSave(storage)).toEqual({ status: 'none' });
+    saveGame(establishedGame(), storage);
+    expect(readSave(storage).status).toBe('loaded');
+  });
+
+  it('比遊戲新、早於 v5、JSON 損毀、還原失敗的存檔無法讀取，而且存檔內容原樣保留', () => {
+    const current = establishedGame().snapshot()!;
+    const broken = [
+      JSON.stringify({ ...current, version: SNAPSHOT_VERSION + 1 }),
+      JSON.stringify({ ...current, version: 4 }),
+      JSON.stringify({ ...current, version: 'six' }),
+      '{not json',
+      'null',
+      JSON.stringify({ version: 5 }),
+      JSON.stringify({ ...current, inventory: null }),
+    ];
+    for (const raw of broken) {
+      const storage = new MemoryStorage();
+      storage.setItem(SAVE_KEY, raw);
+      expect(readSave(storage)).toEqual({ status: 'unreadable' });
+      expect(loadGame(storage)).toBeNull();
+      expect([...storage.data]).toEqual([[SAVE_KEY, raw]]);
+    }
+  });
+
   it('沒有 storage 時不出錯', () => {
+    expect(readSave(null)).toEqual({ status: 'none' });
     expect(saveGame(new Game({ seed: 1 }), null)).toBe(false);
     expect(loadGame(null)).toBeNull();
   });

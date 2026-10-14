@@ -144,6 +144,7 @@ describe('緊急叫貨', () => {
     expect(game.backroomQty('cola')).toBe(0);
     expect(game.rushOrders).toHaveLength(0);
     expect(game.pendingOrders.flatMap((o) => o.lines)).toEqual([{ productId: 'cola', qty: 12 }]);
+    expect(game.pendingOrders[0]!.deliveryDay).toBe(game.day + 1);
 
     game.startNextDay();
     expect(game.backroomQty('cola')).toBe(12);

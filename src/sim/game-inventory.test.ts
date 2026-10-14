@@ -32,9 +32,28 @@ describe('進貨單', () => {
     expect(game.funds).toBe(funds - 24 * productById('cola')!.cost - SHIPPING_FEE);
     expect(game.backroomQty('cola')).toBe(0);
     expect(game.pendingOrders).toHaveLength(1);
+    expect(game.pendingOrders[0]).toMatchObject({ placedDay: 2, deliveryDay: 3 });
 
     playThroughDay(game);
     expect(game.day).toBe(3);
+    expect(game.backroomQty('cola')).toBe(24);
+    expect(game.pendingOrders).toHaveLength(0);
+  });
+
+  it('送達日還沒到的單留著，到了那天開店前才送達', () => {
+    const base = new Game({ seed: 1 });
+    playThroughDay(base);
+    const snapshot = base.snapshot()!;
+    const game = Game.fromSnapshot({
+      ...snapshot,
+      pendingOrders: [{ lines: [{ productId: 'cola', qty: 24 }], placedDay: 2, deliveryDay: 4, total: 0 }],
+    });
+    playThroughDay(game);
+    expect(game.day).toBe(3);
+    expect(game.backroomQty('cola')).toBe(0);
+    expect(game.pendingOrders).toHaveLength(1);
+    playThroughDay(game);
+    expect(game.day).toBe(4);
     expect(game.backroomQty('cola')).toBe(24);
     expect(game.pendingOrders).toHaveLength(0);
   });

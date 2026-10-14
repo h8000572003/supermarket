@@ -26,6 +26,7 @@ export const ERROR_MESSAGES: Record<CommandError, string> = {
   'below-min-order': '低於最低訂購量',
   'rush-limit-reached': '今天的緊急叫貨次數已用完',
   'rush-too-late': '22:00 之後不能緊急叫貨',
+  'order-cutoff': '18:00 之後今日已截單，可改用緊急叫貨',
   'wrong-category': '這次叫貨不能訂這個類別的商品',
   'staff-full': '店員人數已達上限',
   'unknown-staff': '找不到這位店員',

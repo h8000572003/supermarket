@@ -22,7 +22,7 @@ import { StaffAgent } from './agents/staff';
 import type { StaffWorld } from './agents/staff';
 import { CLOSE_MINUTE, MAX_STEPS_PER_TICK, MINUTES_PER_STEP, STEPS_PER_DAY, STEP_MS, minuteOfDay } from './clock/clock';
 import type { Speed } from './clock/clock';
-import { goodsTotal, orderTotal } from './economy/purchase-order';
+import { ORDER_CUTOFF_MINUTE, goodsTotal, orderTotal } from './economy/purchase-order';
 import { FlashSales, MAX_FLASH_SALES, flashSalePrice, isFlashSaleTier } from './economy/flash-sale';
 import type { FlashSale, FlashSaleTier } from './economy/flash-sale';
 import type { OrderLine, PurchaseOrder } from './economy/purchase-order';
@@ -106,6 +106,7 @@ export type CommandError =
   | 'rush-limit-reached'
   /** 已過緊急叫貨的最後下單時刻 */
   | 'rush-too-late'
+  | 'order-cutoff'
   /** 這次叫貨不能訂這個類別的商品 */
   | 'wrong-category'
   /** 店員人數已達上限 */
@@ -765,16 +766,27 @@ export class Game {
     return ok(undefined);
   }
 
-  /** 下進貨單並立即付款（商品金額 + 運費）；第 1 天的開幕進貨立即送達，其餘隔天送達 */
+  /**
+   * 下進貨單並立即付款（商品金額 + 運費）；準備階段或營業時段截單前可下（ADR 0005）。
+   * 第 1 天準備階段的開幕進貨立即送達，其餘下一個營業日開店前送達。
+   */
   submitPurchaseOrder(lines: readonly OrderLine[]): Result<PurchaseOrder> {
-    if (this._phase !== 'prep') return fail('not-prep-phase');
+    if (this._phase === 'open') {
+      if (this.minuteOfDay >= ORDER_CUTOFF_MINUTE) return fail('order-cutoff');
+    } else if (this._phase !== 'prep') return fail('not-prep-phase');
     const checked = this.checkOrderLines(lines);
     if (!checked.ok) return checked;
     const nonEmpty = checked.value;
     const total = orderTotal(nonEmpty);
     if (this._funds < total) return fail('insufficient-funds');
-    const order: PurchaseOrder = { lines: nonEmpty, placedDay: this._day, total };
-    if (isOpeningDelivery(this._day)) this.deliver(order);
+    const opening = this._phase === 'prep' && isOpeningDelivery(this._day);
+    const order: PurchaseOrder = {
+      lines: nonEmpty,
+      placedDay: this._day,
+      deliveryDay: opening ? this._day : this._day + 1,
+      total,
+    };
+    if (opening) this.deliver(order);
     else this._pendingOrders = [...this._pendingOrders, order];
     this._funds -= total;
     this.ledger.purchases += total;
@@ -1223,7 +1235,12 @@ export class Game {
     // 未送達的緊急叫貨轉為一般待送達進貨，下一個營業日開店前送達（ADR 0003）
     this._pendingOrders = [
       ...this._pendingOrders,
-      ...this.pendingRush.map(({ order }) => ({ lines: order.lines, placedDay: order.placedDay, total: order.total })),
+      ...this.pendingRush.map(({ order }) => ({
+        lines: order.lines,
+        placedDay: order.placedDay,
+        deliveryDay: this._day + 1,
+        total: order.total,
+      })),
     ];
     this.pendingRush = [];
     // 還在店內的顧客離開，未結帳的商品退回倉庫
@@ -1384,8 +1401,10 @@ export class Game {
     this._phase = 'prep';
     this._step = 0;
     this.ledger = new DayLedger(this._day, this._funds);
-    for (const order of this._pendingOrders) this.deliver(order);
-    this._pendingOrders = [];
+    // 每張單照下單時記下的送達日送達，送達日還沒到的留著
+    const due = this._pendingOrders.filter((o) => o.deliveryDay <= this._day);
+    for (const order of due) this.deliver(order);
+    this._pendingOrders = this._pendingOrders.filter((o) => o.deliveryDay > this._day);
     this.ledger.waste = summarizeWaste(this.inventory.removeBatches((b) => isExpired(b, this._day)));
     this.chooseDailyGoal();
     this.changed();
