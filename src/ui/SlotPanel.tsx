@@ -8,7 +8,8 @@ const productName = (id: string | null) => (id ? (productById(id)?.name ?? id) :
 
 /**
  * 選取陳列櫃時：指定每個格位陳列的商品。
- * 準備階段立即生效；營業中發起換貨（店員下架後才改），換貨中顯示「換貨中：舊商品 → 新商品」。
+ * 準備階段立即生效；營業中發起換貨（店員下架後才改；空格位立即生效），
+ * 換貨中顯示「換貨中：舊商品 → 新商品」，換成不指定商品時顯示「→ 清空」；下架前選回原商品即取消換貨。
  */
 export function SlotPanel({ controller, fixture }: { controller: Controller; fixture: Fixture }) {
   const open = controller.game.phase === 'open';
@@ -26,7 +27,7 @@ export function SlotPanel({ controller, fixture }: { controller: Controller; fix
     <div className="panel slot-panel">
       {open && (
         <strong className="slot-panel-heading">
-          更換商品<small>店員下架舊商品後換上</small>
+          更換商品<small>店員下架舊商品後換上；空格位立即換上</small>
         </strong>
       )}
       {game.slots(fixture.id).map((slot, i) => {
