@@ -6,10 +6,10 @@
 
 **Blocked by:** 03
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] 營業中與準備階段都顯示在途清單，內容與 `pendingOrders` 一致
-- [ ] 營業中下單後清單立即更新
-- [ ] 進入下一個準備階段後，已送達的單不再列出
-- [ ] 手動驗證手機與桌機
-- [ ] `npm test`、`npm run lint`、`npm run build` 通過
+- [x] 營業中與準備階段都顯示在途清單，內容與 `pendingOrders` 一致
+- [x] 營業中下單後清單立即更新
+- [x] 進入下一個準備階段後，已送達的單不再列出
+- [x] 手動驗證手機與桌機
+- [x] `npm test`、`npm run lint`、`npm run build` 通過

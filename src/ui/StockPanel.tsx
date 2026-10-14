@@ -11,6 +11,7 @@ import { useGameVersion } from './hooks';
 import { useNarrow } from './media';
 import { formatDiscount, formatDuration, formatMoney, formatTime } from './messages';
 import { snapOrderQty } from './order-qty';
+import { PendingOrdersSection } from './PendingOrdersSection';
 import { RushOrderSection } from './RushOrderSection';
 import { Stepper } from './Stepper';
 
@@ -211,6 +212,7 @@ function StockTable({ controller, onClose, order }: StockPanelProps & { order: S
           })}
         </tbody>
       </table>
+      <PendingOrdersSection game={game} />
       {openHours && <RushOrderSection controller={controller} />}
       <footer>
         <OrderSummary order={order} />
@@ -334,6 +336,7 @@ function StockPage({ controller, onClose, order }: StockPanelProps & { order: St
           );
         })}
       </ul>
+      <PendingOrdersSection game={game} />
       {openHours && <RushOrderSection controller={controller} />}
     </FullScreenPage>
   );

@@ -1,6 +1,6 @@
 # 規格：營業中下進貨單與存檔遷移
 
-Status: ready-for-agent
+Status: resolved
 
 詞彙以 `CONTEXT.md` 為準（進貨單、截單時間、緊急叫貨、營業時段、準備階段）；架構決策見 ADR 0001、0002、0005（修訂 ADR 0003）、0006（修訂 ADR 0002）。
 
