@@ -4,7 +4,7 @@ import { Game } from '../sim/game';
 import { totalQty } from '../sim/inventory/batch';
 import { SNAPSHOT_VERSION } from '../sim/snapshot';
 import { playThroughDay, runOpenHours, tickResolving } from '../sim/test-helpers';
-import { SAVE_KEY, clearSave, loadGame, saveGame } from './save';
+import { SAVE_KEY, clearSave, loadGame, readSave, saveGame } from './save';
 
 class MemoryStorage {
   readonly data = new Map<string, string>();
@@ -180,7 +180,35 @@ describe('存檔與讀檔', () => {
     expect(loadGame(storage)).toBeNull();
   });
 
+  it('區分沒有存檔、讀取成功與無法讀取', () => {
+    const storage = new MemoryStorage();
+    expect(readSave(storage)).toEqual({ status: 'none' });
+    saveGame(establishedGame(), storage);
+    expect(readSave(storage).status).toBe('loaded');
+  });
+
+  it('比遊戲新、早於 v5、JSON 損毀、還原失敗的存檔無法讀取，而且存檔內容原樣保留', () => {
+    const current = establishedGame().snapshot()!;
+    const broken = [
+      JSON.stringify({ ...current, version: SNAPSHOT_VERSION + 1 }),
+      JSON.stringify({ ...current, version: 4 }),
+      JSON.stringify({ ...current, version: 'six' }),
+      '{not json',
+      'null',
+      JSON.stringify({ version: 5 }),
+      JSON.stringify({ ...current, inventory: null }),
+    ];
+    for (const raw of broken) {
+      const storage = new MemoryStorage();
+      storage.setItem(SAVE_KEY, raw);
+      expect(readSave(storage)).toEqual({ status: 'unreadable' });
+      expect(loadGame(storage)).toBeNull();
+      expect([...storage.data]).toEqual([[SAVE_KEY, raw]]);
+    }
+  });
+
   it('沒有 storage 時不出錯', () => {
+    expect(readSave(null)).toEqual({ status: 'none' });
     expect(saveGame(new Game({ seed: 1 }), null)).toBe(false);
     expect(loadGame(null)).toBeNull();
   });

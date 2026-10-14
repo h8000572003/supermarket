@@ -6,10 +6,10 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] `loadGame` 回報三種結果；比遊戲新、早於 v5、JSON 損毀、遷移拋錯都歸為「無法讀取」
-- [ ] 無法讀取時存檔內容不被改動或移除（測試驗證 storage 內容不變）
-- [ ] `main.tsx` 在無法讀取時不自動存檔，顯示提示；確認開新遊戲後才覆蓋並恢復自動存檔
-- [ ] 手動驗證：把 localStorage 的存檔版本改成 99，重新整理後看到提示，存檔仍在
-- [ ] `npm test`、`npm run lint`、`npm run build` 通過
+- [x] `loadGame` 回報三種結果；比遊戲新、早於 v5、JSON 損毀、遷移拋錯都歸為「無法讀取」
+- [x] 無法讀取時存檔內容不被改動或移除（測試驗證 storage 內容不變）
+- [x] `main.tsx` 在無法讀取時不自動存檔，顯示提示；確認開新遊戲後才覆蓋並恢復自動存檔
+- [x] 手動驗證：把 localStorage 的存檔版本改成 99，重新整理後看到提示，存檔仍在
+- [x] `npm test`、`npm run lint`、`npm run build` 通過

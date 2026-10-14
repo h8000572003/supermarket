@@ -26,15 +26,35 @@ export function saveGame(game: Game, storage = defaultStorage()): boolean {
   }
 }
 
-/** 讀取存檔，舊版本依序遷移；沒有存檔、格式損壞或無法遷移時回傳 null */
-export function loadGame(storage = defaultStorage()): Game | null {
+/**
+ * 讀存檔的結果：沒有存檔、讀取成功，或存檔無法讀取（太舊、比遊戲新、損毀、遷移或還原失敗）。
+ * 無法讀取的存檔保留原樣，不刪也不覆蓋（ADR 0006）。
+ */
+export type SaveReadResult =
+  | { readonly status: 'none' }
+  | { readonly status: 'loaded'; readonly game: Game }
+  | { readonly status: 'unreadable' };
+
+/** 讀取存檔，舊版本依序遷移；不會改動 storage */
+export function readSave(storage = defaultStorage()): SaveReadResult {
+  let raw: string | null | undefined;
   try {
-    const raw = storage?.getItem(SAVE_KEY);
-    if (!raw) return null;
-    return Game.fromSnapshot(migrateSnapshot(JSON.parse(raw)));
+    raw = storage?.getItem(SAVE_KEY);
   } catch {
-    return null;
+    return { status: 'none' };
   }
+  if (!raw) return { status: 'none' };
+  try {
+    return { status: 'loaded', game: Game.fromSnapshot(migrateSnapshot(JSON.parse(raw))) };
+  } catch {
+    return { status: 'unreadable' };
+  }
+}
+
+/** 讀取存檔；沒有存檔或無法讀取時回傳 null */
+export function loadGame(storage = defaultStorage()): Game | null {
+  const r = readSave(storage);
+  return r.status === 'loaded' ? r.game : null;
 }
 
 export function clearSave(storage = defaultStorage()): void {

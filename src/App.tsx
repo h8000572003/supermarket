@@ -8,6 +8,7 @@ import { FixtureSheet } from './ui/FixtureSheet';
 import type { Controller } from './ui/controller';
 import { Hud } from './ui/Hud';
 import { IncidentDialog } from './ui/IncidentDialog';
+import { UnreadableSaveDialog } from './ui/UnreadableSaveDialog';
 import { MilestonesPanel } from './ui/MilestonesPanel';
 import { StockPanel } from './ui/StockPanel';
 import { useNarrow, usePointerCoarse } from './ui/media';
@@ -15,7 +16,15 @@ import { PlacementBar } from './ui/PlacementBar';
 import { formatMoney } from './ui/messages';
 import { productById } from './sim/catalog/products';
 
-export function App({ controller, sounds }: { controller: Controller; sounds: SoundBoard }) {
+export function App({
+  controller,
+  sounds,
+  unreadableSave = false,
+}: {
+  controller: Controller;
+  sounds: SoundBoard;
+  unreadableSave?: boolean;
+}) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [panel, setPanel] = useState<'stock' | 'milestones' | null>(null);
   const [scene, setScene] = useState<StoreScene | null>(null);
@@ -101,6 +110,7 @@ export function App({ controller, sounds }: { controller: Controller; sounds: So
       {panel === 'milestones' && <MilestonesPanel game={controller.game} onClose={() => setPanel(null)} />}
       <IncidentDialog controller={controller} />
       <DailyReportPanel game={controller.game} />
+      {unreadableSave && <UnreadableSaveDialog />}
     </>
   );
 }
