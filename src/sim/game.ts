@@ -773,8 +773,14 @@ export class Game {
     const nonEmpty = checked.value;
     const total = orderTotal(nonEmpty);
     if (this._funds < total) return fail('insufficient-funds');
-    const order: PurchaseOrder = { lines: nonEmpty, placedDay: this._day, total };
-    if (isOpeningDelivery(this._day)) this.deliver(order);
+    const opening = isOpeningDelivery(this._day);
+    const order: PurchaseOrder = {
+      lines: nonEmpty,
+      placedDay: this._day,
+      deliveryDay: opening ? this._day : this._day + 1,
+      total,
+    };
+    if (opening) this.deliver(order);
     else this._pendingOrders = [...this._pendingOrders, order];
     this._funds -= total;
     this.ledger.purchases += total;
@@ -1223,7 +1229,12 @@ export class Game {
     // 未送達的緊急叫貨轉為一般待送達進貨，下一個營業日開店前送達（ADR 0003）
     this._pendingOrders = [
       ...this._pendingOrders,
-      ...this.pendingRush.map(({ order }) => ({ lines: order.lines, placedDay: order.placedDay, total: order.total })),
+      ...this.pendingRush.map(({ order }) => ({
+        lines: order.lines,
+        placedDay: order.placedDay,
+        deliveryDay: this._day + 1,
+        total: order.total,
+      })),
     ];
     this.pendingRush = [];
     // 還在店內的顧客離開，未結帳的商品退回倉庫
@@ -1384,8 +1395,10 @@ export class Game {
     this._phase = 'prep';
     this._step = 0;
     this.ledger = new DayLedger(this._day, this._funds);
-    for (const order of this._pendingOrders) this.deliver(order);
-    this._pendingOrders = [];
+    // 每張單照下單時記下的送達日送達，送達日還沒到的留著
+    const due = this._pendingOrders.filter((o) => o.deliveryDay <= this._day);
+    for (const order of due) this.deliver(order);
+    this._pendingOrders = this._pendingOrders.filter((o) => o.deliveryDay > this._day);
     this.ledger.waste = summarizeWaste(this.inventory.removeBatches((b) => isExpired(b, this._day)));
     this.chooseDailyGoal();
     this.changed();

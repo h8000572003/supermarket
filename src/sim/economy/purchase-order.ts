@@ -5,11 +5,13 @@ export interface OrderLine {
   readonly qty: number;
 }
 
-/** 店長在準備階段下的訂單，下一個營業日開店前送達倉庫 */
+/** 店長在準備階段或營業時段截單前下的訂單，下一個營業日開店前送達倉庫 */
 export interface PurchaseOrder {
   readonly lines: readonly OrderLine[];
   /** 下單的營業日 */
   readonly placedDay: number;
+  /** 送達倉庫的營業日（於該日開店前送達）；下單時決定，之後不隨規則改變（ADR 0005） */
+  readonly deliveryDay: number;
   readonly total: number;
 }
 

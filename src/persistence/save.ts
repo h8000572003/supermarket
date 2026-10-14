@@ -1,6 +1,5 @@
 import { Game } from '../sim/game';
-import { SNAPSHOT_VERSION } from '../sim/snapshot';
-import type { GameSnapshot } from '../sim/snapshot';
+import { migrateSnapshot } from './migrations';
 
 export const SAVE_KEY = 'convenience-store-sim/save';
 
@@ -27,14 +26,12 @@ export function saveGame(game: Game, storage = defaultStorage()): boolean {
   }
 }
 
-/** 讀取存檔；沒有存檔、格式損壞或版本不符時回傳 null */
+/** 讀取存檔，舊版本依序遷移；沒有存檔、格式損壞或無法遷移時回傳 null */
 export function loadGame(storage = defaultStorage()): Game | null {
   try {
     const raw = storage?.getItem(SAVE_KEY);
     if (!raw) return null;
-    const snapshot = JSON.parse(raw) as Partial<GameSnapshot>;
-    if (snapshot.version !== SNAPSHOT_VERSION) return null;
-    return Game.fromSnapshot(snapshot as GameSnapshot);
+    return Game.fromSnapshot(migrateSnapshot(JSON.parse(raw)));
   } catch {
     return null;
   }

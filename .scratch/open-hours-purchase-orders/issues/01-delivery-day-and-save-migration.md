@@ -6,11 +6,11 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] `PurchaseOrder` 帶 `deliveryDay`；準備階段、打烊轉入的緊急叫貨都設對
-- [ ] `startNextDay` 只送達 `deliveryDay <= 新的一天` 的單；送達日較晚的單留在待送清單
-- [ ] `SNAPSHOT_VERSION = 6`；v6 存讀檔後狀態相等
-- [ ] 遷移模組：v5→v6 補上送達日；手寫的 v5 存檔（含待送單）讀得進來，隔天照常送達
-- [ ] 既有平衡守門測試通過，`npm run balance` 結果不變
-- [ ] `npm test`、`npm run lint`、`npm run build` 通過
+- [x] `PurchaseOrder` 帶 `deliveryDay`；準備階段、打烊轉入的緊急叫貨都設對
+- [x] `startNextDay` 只送達 `deliveryDay <= 新的一天` 的單；送達日較晚的單留在待送清單
+- [x] `SNAPSHOT_VERSION = 6`；v6 存讀檔後狀態相等
+- [x] 遷移模組：v5→v6 補上送達日；手寫的 v5 存檔（含待送單）讀得進來，隔天照常送達
+- [x] 既有平衡守門測試通過，`npm run balance` 結果不變
+- [x] `npm test`、`npm run lint`、`npm run build` 通過

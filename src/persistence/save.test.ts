@@ -116,8 +116,30 @@ describe('存檔與讀檔', () => {
     expect(loadGame(storage)!.dailyGoal).toBeNull();
   });
 
-  it('快照版本號遞增為 5；前一版（沒有每日目標欄位）的存檔直接捨棄', () => {
-    expect(SNAPSHOT_VERSION).toBe(5);
+  it('快照版本號遞增為 6', () => {
+    expect(SNAPSHOT_VERSION).toBe(6);
+  });
+
+  it('v5 存檔（待送進貨單沒有送達日）遷移後讀得進來，待送單照常隔天送達', () => {
+    const storage = new MemoryStorage();
+    const game = establishedGame();
+    const current = game.snapshot()!;
+    expect(current.pendingOrders.length).toBeGreaterThan(0);
+    const v5 = {
+      ...current,
+      version: 5,
+      pendingOrders: current.pendingOrders.map((o) => ({ lines: o.lines, placedDay: o.placedDay, total: o.total })),
+    };
+    storage.setItem(SAVE_KEY, JSON.stringify(v5));
+    const loaded = loadGame(storage)!;
+    expect(loaded).not.toBeNull();
+    expect(loaded.snapshot()).toEqual(current);
+    expect(loaded.pendingOrders.every((o) => o.deliveryDay === o.placedDay + 1)).toBe(true);
+    playThroughDay(loaded);
+    expect(loaded.pendingOrders).toHaveLength(0);
+  });
+
+  it('v4（沒有每日目標欄位，早於可遷移的最舊版本）的存檔無法讀取', () => {
     const storage = new MemoryStorage();
     const old = { ...establishedGame().snapshot()!, version: 4 } as Record<string, unknown>;
     delete old.dailyGoal;
@@ -125,7 +147,7 @@ describe('存檔與讀檔', () => {
     expect(loadGame(storage)).toBeNull();
   });
 
-  it('更舊的版本（沒有天氣欄位）的存檔直接捨棄', () => {
+  it('更舊的版本（沒有天氣欄位）的存檔無法讀取', () => {
     const storage = new MemoryStorage();
     const old = { ...establishedGame().snapshot()!, version: 3 } as Record<string, unknown>;
     delete old.weather;
@@ -133,7 +155,7 @@ describe('存檔與讀檔', () => {
     expect(loadGame(storage)).toBeNull();
   });
 
-  it('舊版本（沒有狀況欄位）的存檔直接捨棄', () => {
+  it('舊版本（沒有狀況欄位）的存檔無法讀取', () => {
     const storage = new MemoryStorage();
     const old = { ...establishedGame().snapshot()!, version: 2 } as Record<string, unknown>;
     delete old.previousIncidentKinds;
