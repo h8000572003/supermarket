@@ -6,9 +6,9 @@
 
 **Blocked by:** 01（換貨主流程）
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] 換貨中的格位上方出現 ⇄，與問題膠囊同時出現時不重疊
-- [ ] 下架完成後 ⇄ 消失；打烊後沒有殘留
-- [ ] 手動於瀏覽器確認四個朝向的陳列櫃都正確顯示
-- [ ] `npm test`、`npm run lint`、`npm run build` 通過
+- [x] 換貨中的格位上方出現 ⇄，與問題膠囊同時出現時不重疊
+- [x] 下架完成後 ⇄ 消失；打烊後沒有殘留
+- [x] 手動於瀏覽器確認四個朝向的陳列櫃都正確顯示
+- [x] `npm test`、`npm run lint`、`npm run build` 通過
