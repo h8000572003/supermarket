@@ -769,6 +769,8 @@ export class Game {
   /**
    * 派工：標記格位或收銀台優先處理，由最近有空的店員去做。
    * 格位會被補滿（不受補貨門檻限制）；收銀台會有一位店員待命到隊伍清空。完成後標記自動清除。
+   * 換貨中、還沒下架的格位：不看「已補滿」，「倉庫沒有貨」看換貨目標；店員先下架再補滿新商品。
+   * 換成不指定商品的格位也能派工，意思是「現在就去下架」，下架後標記清除。
    */
   dispatch(target: DispatchTarget): Result {
     const phase = phaseError(this._phase, 'open');
@@ -778,10 +780,17 @@ export class Game {
     if (this.isDispatched(target)) return fail('already-dispatched');
     if (this._dispatches.length >= MAX_DISPATCHES) return fail('dispatch-full');
     if (target.kind === 'slot') {
+      const changeover = this.changeover(target.fixtureId, target.slotIndex);
       const slot = this.inventory.slot(target.fixtureId, target.slotIndex);
-      if (!slot?.productId) return fail('slot-unassigned');
-      if (this.slotIsFull(target.fixtureId, target.slotIndex)) return fail('slot-full');
-      if (this.inventory.backroomQty(slot.productId) === 0) return fail('no-backroom-stock');
+      if (changeover) {
+        if (changeover.productId && this.inventory.backroomQty(changeover.productId) === 0) {
+          return fail('no-backroom-stock');
+        }
+      } else {
+        if (!slot?.productId) return fail('slot-unassigned');
+        if (this.slotIsFull(target.fixtureId, target.slotIndex)) return fail('slot-full');
+        if (this.inventory.backroomQty(slot.productId) === 0) return fail('no-backroom-stock');
+      }
     }
     this._dispatches = [...this._dispatches, target];
     this.changed();
@@ -822,10 +831,22 @@ export class Game {
     return !!fixture && !!slot && totalQty(slot.batches) >= FIXTURES[fixture.kind].slotCapacity;
   }
 
-  /** 把尚未有人處理的格位派工交給最近有空的店員 */
+  /** 把尚未有人處理的格位派工交給最近有空的店員；換貨中的格位先派去下架 */
   private assignSlotDispatches(): void {
     for (const d of this._dispatches) {
       if (d.kind !== 'slot' || this.reservedSlots.has(slotKey(d.fixtureId, d.slotIndex))) continue;
+      const changeover = this.changeover(d.fixtureId, d.slotIndex);
+      if (changeover) {
+        // 倉庫沒有新商品：不派去下架，標記由 clearFinishedDispatches 清除
+        if (changeover.productId && this.inventory.backroomQty(changeover.productId) === 0) continue;
+        const staff = nearestAvailable(
+          this.agents,
+          this.staffWorld.slotAccessTile(d.fixtureId, d.slotIndex),
+          (s) => !s.onDispatch,
+        );
+        staff?.assignDispatchClearOut(d, this.staffWorld, this.reservedSlots);
+        continue;
+      }
       const task = this.staffWorld
         .restockCandidates()
         .find((c) => c.fixtureId === d.fixtureId && c.slotIndex === d.slotIndex);
@@ -846,10 +867,15 @@ export class Game {
         const held = (this.registerHolds.get(d.registerId) ?? 0) > this._step;
         return held || !this.checkout.isStaffedAndClear(d.registerId);
       }
+      const changeover = this.changeover(d.fixtureId, d.slotIndex);
+      const claimed = this.reservedSlots.has(slotKey(d.fixtureId, d.slotIndex));
+      // 還沒下架：舊商品滿架也保留標記；換貨目標的倉庫存貨用完且沒人在處理時才清除
+      if (changeover) {
+        return claimed || !changeover.productId || this.inventory.backroomQty(changeover.productId) > 0;
+      }
       if (this.slotIsFull(d.fixtureId, d.slotIndex)) return false;
       // 沒有店員在處理、倉庫也沒貨了：無法完成
       const productId = this.inventory.slot(d.fixtureId, d.slotIndex)?.productId;
-      const claimed = this.reservedSlots.has(slotKey(d.fixtureId, d.slotIndex));
       return claimed || (!!productId && this.inventory.backroomQty(productId) > 0);
     });
     if (remaining.length === this._dispatches.length) return;

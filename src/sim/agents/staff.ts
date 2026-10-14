@@ -99,6 +99,16 @@ export class StaffAgent extends Walker {
     this.walkTo(world.backroomDoor, world.isWalkable);
   }
 
+  /** 派工到換貨中的格位：放下尚未取貨的工作，先去下架；下架後由派工流程補滿新商品 */
+  assignDispatchClearOut(target: ClearOutCandidate, world: StaffWorld, reserved: Set<string>): void {
+    this.dropTask(reserved);
+    this.task = { kind: 'clear-out', fixtureId: target.fixtureId, slotIndex: target.slotIndex };
+    this.onDispatch = true;
+    reserved.add(slotKey(target.fixtureId, target.slotIndex));
+    this.activity = 'to-clear-out';
+    this.walkTo(world.slotAccessTile(target.fixtureId, target.slotIndex), world.isWalkable);
+  }
+
   /** 取消派工：還沒取貨就放下工作；已拿著貨則照常上架 */
   cancelDispatch(reserved: Set<string>): void {
     if (!this.onDispatch) return;
@@ -106,11 +116,14 @@ export class StaffAgent extends Walker {
     else this.onDispatch = false;
   }
 
-  /** 格位開始換貨：還沒取貨的一般補貨放下（不再補舊商品）；派工與已拿著貨的照常 */
+  /**
+   * 格位開始換貨：還沒取貨的補貨放下（不再補舊商品），派工的也一樣——派工標記保留，改成先下架；
+   * 已拿著貨的照常上架
+   */
   abandonRestock(fixtureId: string, slotIndex: number, reserved: Set<string>): void {
     const t = this.task;
     if (t?.kind !== 'restock' || t.fixtureId !== fixtureId || t.slotIndex !== slotIndex) return;
-    if (this.onDispatch || this.carrying.length > 0) return;
+    if (this.carrying.length > 0) return;
     this.dropTask(reserved);
   }
 
