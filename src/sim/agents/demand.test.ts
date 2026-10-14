@@ -1,14 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { Rng } from '../rng';
+import type { CategoryId } from '../catalog/products';
 import {
   BASE_SATISFACTION,
   MAX_DISCOUNT_BONUS,
+  WEATHER_DEMAND,
   arrivalsPerHour,
   checkoutSatisfaction,
+  combineDemand,
+  conditionsArrivalMultiplier,
   discountBonus,
+  listShare,
   purchaseProbability,
   rollShoppingList,
 } from './demand';
+import type { DemandMultipliers } from './demand';
 
 describe('來客曲線', () => {
   it('午餐尖峰高於下午離峰，深夜最低', () => {
@@ -48,6 +54,71 @@ describe('購物清單', () => {
     // 第一個抽到的類別：平常 5/10，加倍後 10/15
     expect(normal).toBeCloseTo(0.5, 1);
     expect(doubled).toBeCloseTo(2 / 3, 1);
+  });
+});
+
+describe('天氣與星期的倍率', () => {
+  it('來客：晴天平日為基準；雨天 −25%、週末 +20%，兩者相乘', () => {
+    expect(conditionsArrivalMultiplier({ weather: 'sunny', weekend: false })).toBe(1);
+    expect(conditionsArrivalMultiplier({ weather: 'hot', weekend: false })).toBe(1);
+    expect(conditionsArrivalMultiplier({ weather: 'cold', weekend: false })).toBe(1);
+    expect(conditionsArrivalMultiplier({ weather: 'rainy', weekend: false })).toBeCloseTo(0.75);
+    expect(conditionsArrivalMultiplier({ weather: 'sunny', weekend: true })).toBeCloseTo(1.2);
+    expect(conditionsArrivalMultiplier({ weather: 'rainy', weekend: true })).toBeCloseTo(0.9);
+  });
+
+  it('類別需求：熱天飲料 ×2、泡麵 ×0.5；冷天泡麵 ×2、飲料 ×0.6；晴天與雨天不變', () => {
+    expect(WEATHER_DEMAND.hot).toEqual({ drink: 2, noodle: 0.5 });
+    expect(WEATHER_DEMAND.cold).toEqual({ noodle: 2, drink: 0.6 });
+    expect(WEATHER_DEMAND.sunny).toEqual({});
+    expect(WEATHER_DEMAND.rainy).toEqual({});
+  });
+
+  it('天氣與狀況的類別需求倍率相乘（冷天遇上熱浪：飲料 0.6 × 2）', () => {
+    expect(combineDemand(WEATHER_DEMAND.cold, { drink: 2 })).toEqual({ noodle: 2, drink: 1.2 });
+    expect(combineDemand({}, { drink: 2 })).toEqual({ drink: 2 });
+    expect(combineDemand(WEATHER_DEMAND.hot, {})).toEqual(WEATHER_DEMAND.hot);
+  });
+});
+
+describe('購物清單的類別比重', () => {
+  const ALL: CategoryId[] = ['drink', 'fresh', 'snack', 'noodle', 'daily'];
+
+  /** 實際擲 n 張購物清單，各類別出現的比例 */
+  function rolledShare(available: CategoryId[], multiplier: DemandMultipliers, n = 4000) {
+    const rng = Rng.fromSeed(21);
+    const count: Partial<Record<CategoryId, number>> = {};
+    for (let i = 0; i < n; i++) {
+      for (const c of rollShoppingList(rng, available, multiplier)) count[c] = (count[c] ?? 0) + 1;
+    }
+    return (c: CategoryId) => (count[c] ?? 0) / n;
+  }
+
+  it('listShare 是 rollShoppingList 的期望值：與實際擲出的比例相符，總和為平均清單長度', () => {
+    for (const multiplier of [{}, WEATHER_DEMAND.hot, WEATHER_DEMAND.cold]) {
+      const expected = listShare(ALL, multiplier);
+      const rolled = rolledShare(ALL, multiplier);
+      for (const c of ALL) expect(rolled(c)).toBeCloseTo(expected[c]!, 1);
+      // 清單 1–3 個類別均勻抽：平均 2 個
+      expect(Object.values(expected).reduce((a, b) => a + b, 0)).toBeCloseTo(2);
+    }
+  });
+
+  it.each([
+    ['起始三類', ['drink', 'snack', 'noodle'] as CategoryId[]],
+    ['全部類別', ALL],
+  ])('熱天購物清單出現飲料的比例提高、泡麵降低；冷天相反（%s）', (_label, available) => {
+    const sunny = rolledShare(available, {});
+    const hot = rolledShare(available, WEATHER_DEMAND.hot);
+    const cold = rolledShare(available, WEATHER_DEMAND.cold);
+    expect(hot('drink')).toBeGreaterThan(sunny('drink') + 0.05);
+    expect(hot('noodle')).toBeLessThan(sunny('noodle') - 0.05);
+    expect(cold('noodle')).toBeGreaterThan(sunny('noodle') + 0.05);
+    expect(cold('drink')).toBeLessThan(sunny('drink') - 0.05);
+    // 期望值同方向
+    const share = (m: DemandMultipliers) => listShare(available, m);
+    expect(share(WEATHER_DEMAND.hot).drink!).toBeGreaterThan(share({}).drink!);
+    expect(share(WEATHER_DEMAND.cold).noodle!).toBeGreaterThan(share({}).noodle!);
   });
 });
 

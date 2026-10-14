@@ -48,8 +48,9 @@ export interface DayConditions {
   readonly weekend: boolean;
 }
 
-export function dayConditions(day: number, weather: Weather): DayConditions {
-  const weekday = weekdayOf(day);
+/** weekdayOffset 只供測試（讓第 1 天不是週一）；遊戲中一律為 0 */
+export function dayConditions(day: number, weather: Weather, weekdayOffset = 0): DayConditions {
+  const weekday = weekdayOf(day + weekdayOffset);
   return { day, weather, weekday, weekend: isWeekend(weekday) };
 }
 

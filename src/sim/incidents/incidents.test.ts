@@ -5,6 +5,7 @@ import type { IncidentContext, IncidentDefinition, IncidentKind } from './incide
 
 const ctx: IncidentContext = {
   day: 2,
+  weather: 'sunny',
   funds: 10_000,
   workingStaff: 2,
   registers: 1,

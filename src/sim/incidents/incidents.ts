@@ -3,6 +3,7 @@ import type { CategoryId } from '../catalog/products';
 import { goodsTotal } from '../economy/purchase-order';
 import type { OrderLine } from '../economy/purchase-order';
 import type { Rng } from '../rng';
+import type { Weather } from '../weather/weather';
 
 /**
  * 狀況（Incident）：營業時段中隨機發生、讓遊戲暫停並要店長擇一選項的情境。
@@ -16,6 +17,8 @@ export type IncidentKind = 'influencer-visit' | 'staff-sick' | 'group-visit' | '
 /** 判斷狀況能否發生時看得到的店況 */
 export interface IncidentContext {
   readonly day: number;
+  /** 今天的天氣 */
+  readonly weather: Weather;
   readonly funds: number;
   /** 今天正在上班的店員人數 */
   readonly workingStaff: number;
@@ -187,7 +190,8 @@ export const INCIDENTS: readonly IncidentDefinition[] = [
     kind: 'heat-wave',
     name: '熱浪',
     description: () => `氣溫飆高，今天${DRINK_NAME}的需求加倍。供應商願意免運費緊急送一次${DRINK_NAME}。`,
-    precondition: (ctx) => heatWaveLines(ctx).length > 0,
+    // 熱浪是「突然變熱」：熱天不會發生，也就不會和熱天的飲料需求疊加
+    precondition: (ctx) => ctx.weather !== 'hot' && heatWaveLines(ctx).length > 0,
     rollParams: (_rng, ctx) => ({ lines: heatWaveLines(ctx) }),
     options: (params) => {
       const lines = params.lines ?? [];

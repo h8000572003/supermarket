@@ -1,4 +1,5 @@
-import { PRODUCTS, productById } from '../catalog/products';
+import { WEATHER_DEMAND, conditionsArrivalMultiplier, listShare } from '../agents/demand';
+import { CATEGORIES, CATEGORY_IDS, PRODUCTS, productById } from '../catalog/products';
 import type { CategoryId } from '../catalog/products';
 import type { FixtureKind } from '../catalog/fixtures';
 import { SHIPPING_FEE } from '../economy/purchase-order';
@@ -7,6 +8,7 @@ import type { PendingIncident } from '../incidents/incidents';
 import { totalQty } from '../inventory/batch';
 import type { Facing } from '../store/geometry';
 import { runOpenHours } from '../test-helpers';
+import type { DayConditions } from '../weather/weather';
 
 /** 無畫面平衡測試用的「店長策略」：每天準備階段替玩家做決策 */
 export interface Strategy {
@@ -37,6 +39,8 @@ export interface StorePlan {
   readonly displays: { id: string; products: (string | null)[] }[];
   /** 已經依解鎖補上陳列的類別 */
   readonly stocked: Set<CategoryId>;
+  /** 上一次準備階段時「今天」的天氣與星期（依預報進貨用來換算昨天的銷量） */
+  lastConditions?: DayConditions;
 }
 
 export interface DayRow {
@@ -74,9 +78,15 @@ const DEFAULT_DAILY_SALES = 15;
 /**
  * 依昨天賣量預估日需求。今天下的單明天才到，
  * 所以要讓「現有 + 在途 − 今天會賣掉」≥ 明天需求 × cover。
+ * tomorrowFactor 為各類別明天需求相對於昨天賣量的倍率（依預報進貨用）；省略時視為與昨天相同。
  * 資金不夠時按比例縮減。
  */
-export function parOrder(game: Game, plan: StorePlan, cover = 1.2): void {
+export function parOrder(
+  game: Game,
+  plan: StorePlan,
+  cover = 1.2,
+  tomorrowFactor?: (category: CategoryId) => number,
+): void {
   const sold = game.lastReport?.sales ?? {};
   const onShelf = new Map<string, number>();
   for (const d of plan.displays) {
@@ -90,11 +100,13 @@ export function parOrder(game: Game, plan: StorePlan, cover = 1.2): void {
     const product = productById(productId);
     if (!product || !game.isUnlocked(product.category)) continue;
     const expected = sold[productId] ?? DEFAULT_DAILY_SALES;
+    // 今天照昨天的賣量，明天再乘上 tomorrowFactor
+    const days = 1 + cover * (tomorrowFactor?.(product.category) ?? 1);
     const have =
       game.backroomQty(productId) +
       (onShelf.get(productId) ?? 0) +
       game.pendingOrders.flatMap((o) => o.lines).filter((l) => l.productId === productId).reduce((s, l) => s + l.qty, 0);
-    const need = Math.ceil(expected * (1 + cover) - have);
+    const need = Math.ceil(expected * days - have);
     if (need > 0) wants.push({ productId, need, minOrder: product.minOrder, cost: product.cost });
   }
   // 保留一天的租金與日薪，避免付不出來
@@ -126,24 +138,70 @@ export const standard: Strategy = {
     plan.stocked.add('drink').add('snack').add('noodle');
   },
   prep(game, plan) {
-    if (game.isUnlocked('fresh') && !plan.stocked.has('fresh')) {
-      const fridge = plan.displays[1]!;
-      fridge.products.splice(0, 4, 'rice-ball', 'sandwich', 'bento', 'rice-ball');
-      fridge.products.forEach((p, i) => game.assignSlot(fridge.id, i, p));
-      plan.stocked.add('fresh');
-    }
-    if (game.isUnlocked('daily') && !plan.stocked.has('daily') && game.funds > 6_000) {
-      addDisplay(game, plan, 'shelf', 3, 7, 'north', ['tissue', 'tissue', 'toothbrush', 'toothbrush']);
-      plan.stocked.add('daily');
-    }
-    const r = game.lastReport;
-    if (r && game.staff.length < 3 && r.customers.abandoned > 4 && game.funds > 18_000) {
-      place(game, 'register', 7, 4, 'west');
-      game.hireStaff();
-    }
-    parOrder(game, plan);
+    standardPrep(game, plan);
   },
   chooseIncidentOption: firstOption,
+};
+
+/** 標準經營的準備階段：依解鎖擴充品項、賺錢後加開收銀台，再依銷量補貨 */
+function standardPrep(game: Game, plan: StorePlan, tomorrowFactor?: (category: CategoryId) => number): void {
+  if (game.isUnlocked('fresh') && !plan.stocked.has('fresh')) {
+    const fridge = plan.displays[1]!;
+    fridge.products.splice(0, 4, 'rice-ball', 'sandwich', 'bento', 'rice-ball');
+    fridge.products.forEach((p, i) => game.assignSlot(fridge.id, i, p));
+    plan.stocked.add('fresh');
+  }
+  if (game.isUnlocked('daily') && !plan.stocked.has('daily') && game.funds > 6_000) {
+    addDisplay(game, plan, 'shelf', 3, 7, 'north', ['tissue', 'tissue', 'toothbrush', 'toothbrush']);
+    plan.stocked.add('daily');
+  }
+  const r = game.lastReport;
+  if (r && game.staff.length < 3 && r.customers.abandoned > 4 && game.funds > 18_000) {
+    place(game, 'register', 7, 4, 'west');
+    game.hireStaff();
+  }
+  parOrder(game, plan, undefined, tomorrowFactor);
+}
+
+/**
+ * 某天某類別的預期需求倍率（相對晴天平日）：天氣與星期的來客倍率 ×
+ * 天氣的類別需求倍率讓該類別出現在購物清單的機率變化。
+ */
+export function expectedDemandFactor(
+  conditions: Pick<DayConditions, 'weather' | 'weekend'>,
+  category: CategoryId,
+  available: readonly CategoryId[],
+): number {
+  const base = listShare(available)[category] ?? 0;
+  if (base === 0) return 1;
+  const shifted = listShare(available, WEATHER_DEMAND[conditions.weather])[category] ?? 0;
+  return (conditionsArrivalMultiplier(conditions) * shifted) / base;
+}
+
+/**
+ * 依預報進貨的需求調整：明天相對於昨天（賣量的來源）的預期需求倍率。
+ * 鮮食會報廢，照倍率增減（雨天前少進）；其他類別放得住，只在明天需求較高時多進（熱天前多進飲料、冷天前多進泡麵），
+ * 需求較低時照標準進貨，不冒缺貨的風險。
+ */
+export function forecastAdjustment(game: Game, yesterday: DayConditions | undefined): (category: CategoryId) => number {
+  const available = CATEGORY_IDS.filter((c) => game.isUnlocked(c));
+  const factor = (c: DayConditions | undefined, category: CategoryId) =>
+    c ? expectedDemandFactor(c, category, available) : 1;
+  return (category) => {
+    const relative = factor(game.forecast, category) / factor(yesterday, category);
+    return CATEGORIES[category].shelfLife !== undefined ? relative : Math.max(1, relative);
+  };
+}
+
+/** 依預報進貨：標準經營的店，各類別的進貨量依明日預報的天氣與星期調整（見 forecastAdjustment） */
+export const forecastAware: Strategy = {
+  ...standard,
+  name: '依預報進貨',
+  prep(game, plan) {
+    const yesterday = plan.lastConditions;
+    plan.lastConditions = game.today;
+    standardPrep(game, plan, forecastAdjustment(game, yesterday));
+  },
 };
 
 /** 偷懶：只開一個貨架、一位店員，固定少量進貨 */
@@ -192,7 +250,14 @@ export const neglectResponse: Strategy = {
   chooseIncidentOption: cheapestOption,
 };
 
-export const STRATEGIES: readonly Strategy[] = [standard, minimal, overspend, worstResponse, neglectResponse];
+export const STRATEGIES: readonly Strategy[] = [
+  standard,
+  forecastAware,
+  minimal,
+  overspend,
+  worstResponse,
+  neglectResponse,
+];
 
 /** 以策略經營 days 天（遇破產提前結束），回傳每天的結果 */
 export function simulate(strategy: Strategy, days: number, seed: number): DayRow[] {
