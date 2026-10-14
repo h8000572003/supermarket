@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { arrivalsPerHour } from './agents/demand';
+import { WEATHER_DEMAND, arrivalsPerHour, conditionsArrivalMultiplier } from './agents/demand';
 import { productById } from './catalog/products';
 import { MAX_STEPS_PER_TICK, STEP_MS } from './clock/clock';
 import { freeRushTerms } from './economy/rush-order';
@@ -125,7 +125,9 @@ function kindsOver(game: Game, days: number): IncidentKind[] {
   return Array.from({ length: days }, () => playDay(game).map((i) => i.kind)).flat();
 }
 
-const baseRate = (game: Game) => arrivalsPerHour(game.minuteOfDay) * arrivalMultiplier(game.reputation);
+/** 沒有狀況時的來客速率：時段曲線 × 口碑倍率 × 今天的天氣與星期倍率 */
+const baseRate = (game: Game) =>
+  arrivalsPerHour(game.minuteOfDay) * arrivalMultiplier(game.reputation) * conditionsArrivalMultiplier(game.today);
 
 describe('團客來店', () => {
   it('店內沒有收銀台時不會發生', () => {
@@ -252,17 +254,18 @@ describe('熱浪', () => {
     expect(pending.options[1]).toMatchObject({ cost: 0, available: true });
   });
 
-  it.each([0, 1])('選項 %i：當天飲料需求加倍；隔天恢復', (option) => {
+  it.each([0, 1])('選項 %i：當天飲料需求加倍（與天氣的倍率相乘）；隔天恢復', (option) => {
     const { game } = store();
     playUntil(game, 'heat-wave');
-    expect(game.demandMultiplier('drink')).toBe(1);
+    const weatherDrink = WEATHER_DEMAND[game.today.weather].drink ?? 1;
+    expect(game.demandMultiplier('drink')).toBe(weatherDrink);
     game.resolveIncident(option);
-    expect(game.demandMultiplier('drink')).toBe(2);
+    expect(game.demandMultiplier('drink')).toBeCloseTo(weatherDrink * 2);
     expect(game.demandMultiplier('snack')).toBe(1);
     finishDay(game);
     game.startNextDay();
     game.openStore();
-    expect(game.demandMultiplier('drink')).toBe(1);
+    expect(game.demandMultiplier('drink')).toBe(WEATHER_DEMAND[game.today.weather].drink ?? 1);
   });
 
   it('「免運費叫飲料」：只扣商品金額、不扣運費、不佔每日次數，2 小時後送達倉庫', () => {
@@ -316,9 +319,10 @@ describe('熱浪', () => {
     expect(pending.options.map((o) => o.available)).toEqual([false, true]);
     expect(game.resolveIncident(0)).toEqual({ ok: false, error: 'insufficient-funds' });
     expect(game.rushOrders).toHaveLength(0);
-    expect(game.demandMultiplier('drink')).toBe(1);
+    const weatherDrink = WEATHER_DEMAND[game.today.weather].drink ?? 1;
+    expect(game.demandMultiplier('drink')).toBe(weatherDrink);
     expect(game.resolveIncident(1).ok).toBe(true);
-    expect(game.demandMultiplier('drink')).toBe(2);
+    expect(game.demandMultiplier('drink')).toBeCloseTo(weatherDrink * 2);
   });
 });
 

@@ -2,7 +2,7 @@
  * 無畫面平衡報告：npm run balance [天數] [種子數]
  * 以數種固定策略各經營 N 天，列出每天收支與里程碑。
  */
-import { STRATEGIES, simulate } from '../src/sim/balance/strategies';
+import { STRATEGIES, forecastAware, simulate, standard } from '../src/sim/balance/strategies';
 
 // 專案只裝瀏覽器型別；此腳本在 Node（tsx）執行，只用到 argv
 declare const process: { argv: string[] };
@@ -31,4 +31,11 @@ for (const strategy of STRATEGIES) {
       }
     }
   }
+}
+
+// 預報值不值得看：依預報進貨與標準經營的期末資金差
+console.log(`\n=== ${forecastAware.name} − ${standard.name}（期末資金差）===`);
+for (let seed = 1; seed <= seeds; seed++) {
+  const funds = (s: typeof standard) => simulate(s, days, seed).at(-1)!.funds;
+  console.log(`seed ${seed}: ${funds(forecastAware) - funds(standard)}`);
 }

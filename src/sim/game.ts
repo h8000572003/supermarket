@@ -7,7 +7,15 @@ import type { RegisterSpot } from './agents/checkout';
 import { CustomerAgent } from './agents/customer';
 import { slotKey } from './agents/restock';
 import type { CustomerWorld } from './agents/customer';
-import { LAST_ENTRY_BEFORE_CLOSE, MAX_CUSTOMERS_IN_STORE, arrivalsPerHour, rollShoppingList } from './agents/demand';
+import {
+  LAST_ENTRY_BEFORE_CLOSE,
+  MAX_CUSTOMERS_IN_STORE,
+  WEATHER_DEMAND,
+  arrivalsPerHour,
+  combineDemand,
+  conditionsArrivalMultiplier,
+  rollShoppingList,
+} from './agents/demand';
 import { StaffAgent } from './agents/staff';
 import type { StaffWorld } from './agents/staff';
 import { CLOSE_MINUTE, MAX_STEPS_PER_TICK, MINUTES_PER_STEP, STEPS_PER_DAY, STEP_MS, minuteOfDay } from './clock/clock';
@@ -49,8 +57,8 @@ import type { DailyReport, WasteLine } from './report/daily-report';
 import { Rng } from './rng';
 import { SNAPSHOT_VERSION } from './snapshot';
 import type { GameSnapshot } from './snapshot';
-import { advanceWeather, dayConditions, initialWeather, weatherSeed } from './weather/weather';
-import type { DayConditions, WeatherState } from './weather/weather';
+import { WEEKDAYS, advanceWeather, dayConditions, initialWeather, weatherSeed } from './weather/weather';
+import type { DayConditions, Weather, WeatherState, Weekday } from './weather/weather';
 import { totalQty } from './inventory/batch';
 import type { Batch } from './inventory/batch';
 import { customerAccessTiles, rotateClockwise, slotAccessTile, staffAccessTiles } from './store/geometry';
@@ -224,6 +232,13 @@ export interface GameOptions {
   startingReputation?: number;
   /** 起始資金；預設 STARTING_FUNDS。供測試布置情境用 */
   startingFunds?: number;
+  /**
+   * 只供測試：指定第 1、2、3… 個營業日的天氣（未列出的天照常擲），讓測試能在同種子下比較天氣。
+   * 不受「第 1 天晴」與連續上限限制，也不存進快照。
+   */
+  testWeather?: readonly Weather[];
+  /** 只供測試：第 1 個營業日是星期幾（預設週一），讓測試能在同種子下比較平日與週末。不存進快照 */
+  testFirstWeekday?: Weekday;
 }
 
 /** 模擬核心的唯一入口：commands 改變狀態、唯讀 getter 查詢、subscribe 監聽變化 */
@@ -279,6 +294,8 @@ export class Game {
   /** 天氣專用亂數流（與 rng 分開，天氣不影響顧客與狀況的亂數序列） */
   private weatherRng: Rng;
   private weather: WeatherState;
+  private readonly testWeather: readonly Weather[];
+  private readonly weekdayOffset: number;
 
   private readonly customerWorld: CustomerWorld;
   private readonly customerArrivals: boolean;
@@ -286,7 +303,9 @@ export class Game {
   constructor(options: GameOptions) {
     this.rng = Rng.fromSeed(options.seed);
     this.weatherRng = Rng.fromSeed(weatherSeed(options.seed));
-    this.weather = initialWeather(this.weatherRng);
+    this.testWeather = options.testWeather ?? [];
+    this.weekdayOffset = options.testFirstWeekday ? WEEKDAYS.indexOf(options.testFirstWeekday) : 0;
+    this.weather = this.withTestWeather(initialWeather(this.weatherRng));
     this.customerArrivals = options.customerArrivals ?? true;
     this._reputation = options.startingReputation ?? STARTING_REPUTATION;
     this._funds = options.startingFunds ?? STARTING_FUNDS;
@@ -373,12 +392,12 @@ export class Game {
 
   /** 今天（目前營業日）的天氣與星期 */
   get today(): DayConditions {
-    return dayConditions(this._day, this.weather.today);
+    return dayConditions(this._day, this.weather.today, this.weekdayOffset);
   }
 
   /** 明日預報：下一個營業日的天氣與星期（一定準確） */
   get forecast(): DayConditions {
-    return dayConditions(this._day + 1, this.weather.tomorrow);
+    return dayConditions(this._day + 1, this.weather.tomorrow, this.weekdayOffset);
   }
 
   /** 營業時段已進行的步數 */
@@ -477,15 +496,36 @@ export class Game {
     };
   }
 
-  /** 目前的來客速率（人 / 遊戲小時）：時段曲線 × 口碑倍率 × 狀況的暫時來客倍率；營業時段以外為 0 */
+  /**
+   * 目前的來客速率（人 / 遊戲小時）：
+   * 時段曲線 × 口碑倍率 × 今天的天氣與星期倍率 × 狀況的暫時來客倍率；營業時段以外為 0
+   */
   get arrivalsPerHourNow(): number {
     if (this._phase !== 'open') return 0;
-    return arrivalsPerHour(this.minuteOfDay) * arrivalMultiplier(this._reputation) * this.surgeMultiplier();
+    return (
+      arrivalsPerHour(this.minuteOfDay) *
+      arrivalMultiplier(this._reputation) *
+      conditionsArrivalMultiplier(this.today) *
+      this.surgeMultiplier()
+    );
   }
 
-  /** 今天該類別出現在購物清單的權重倍率（熱浪時飲料為 2）；打烊後恢復為 1 */
+  /**
+   * 今天該類別出現在購物清單的權重倍率：今天天氣的倍率 × 狀況的倍率（例如熱天飲料 ×2、熱浪飲料 ×2）。
+   * 狀況的倍率打烊後恢復為 1；天氣的倍率跟著今天的天氣。
+   */
   demandMultiplier(category: CategoryId): number {
-    return this.categoryDemand[category] ?? 1;
+    return this.demandMultipliers()[category] ?? 1;
+  }
+
+  private demandMultipliers(): Partial<Record<CategoryId, number>> {
+    return combineDemand(WEATHER_DEMAND[this.weather.today], this.categoryDemand);
+  }
+
+  /** 套用測試指定的天氣（GameOptions.testWeather）；沒有指定時原樣回傳 */
+  private withTestWeather(s: WeatherState): WeatherState {
+    const forced = (day: number) => this.testWeather[day - 1];
+    return { ...s, today: forced(this._day) ?? s.today, tomorrow: forced(this._day + 1) ?? s.tomorrow };
   }
 
   private surgeMultiplier(): number {
@@ -1057,6 +1097,7 @@ export class Game {
   private incidentContext(): IncidentContext {
     return {
       day: this._day,
+      weather: this.weather.today,
       funds: this._funds,
       workingStaff: this._phase === 'open' ? this.agents.length : this._staff.length,
       registers: this.layout.list().filter((f) => f.kind === 'register').length,
@@ -1223,7 +1264,7 @@ export class Game {
     if (this._phase !== 'report') return fail('not-report-phase');
     this.previousIncidentKinds = this.ledger.incidents.map((i) => i.kind);
     this._day++;
-    this.weather = advanceWeather(this.weatherRng, this.weather);
+    this.weather = this.withTestWeather(advanceWeather(this.weatherRng, this.weather));
     this._phase = 'prep';
     this._step = 0;
     this.ledger = new DayLedger(this._day, this._funds);
@@ -1249,7 +1290,7 @@ export class Game {
     if (minute >= CLOSE_MINUTE - LAST_ENTRY_BEFORE_CLOSE || this.customers.length >= MAX_CUSTOMERS_IN_STORE) return;
     const perStep = (this.arrivalsPerHourNow * MINUTES_PER_STEP) / 60;
     if (!this.rng.chance(perStep)) return;
-    const list = rollShoppingList(this.rng, [...this.unlocked], this.categoryDemand);
+    const list = rollShoppingList(this.rng, [...this.unlocked], this.demandMultipliers());
     const patience = this.rng.int(...PATIENCE_RANGE);
     this.customers.push(new CustomerAgent(`c${this.nextCustomerId++}`, list, patience, this.customerWorld));
     this.ledger.entered++;

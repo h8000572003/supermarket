@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { STARTING_FUNDS } from '../game';
-import { minimal, neglectResponse, overspend, simulate, standard, worstResponse } from './strategies';
+import { forecastAware, minimal, neglectResponse, overspend, simulate, standard, worstResponse } from './strategies';
 
 /**
  * 平衡守門：調整數值後，這些經營結果的大方向不應改變。
@@ -44,5 +44,12 @@ describe('平衡', { timeout: 30_000 }, () => {
       // 資金從未轉負，離破產還很遠
       expect(Math.min(...rows.map((r) => r.funds))).toBeGreaterThan(0);
     }
+  });
+
+  it.each([1, 2, 3])('依預報進貨 30 天後的資金高於標準經營（種子 %i）', (seed) => {
+    // 預報值得看：同一家店，只差在依明日預報調整各類別的進貨量
+    const informed = simulate(forecastAware, 30, seed);
+    expect(informed).toHaveLength(30);
+    expect(informed.at(-1)!.funds).toBeGreaterThan(simulate(standard, 30, seed).at(-1)!.funds);
   });
 });

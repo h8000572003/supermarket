@@ -3,6 +3,7 @@ import { FIXTURES } from '../sim/catalog/fixtures';
 import type { FixtureKind } from '../sim/catalog/fixtures';
 import type { Walker } from '../sim/agents/walker';
 import type { Game } from '../sim/game';
+import type { Weather } from '../sim/weather/weather';
 import { accessTiles, footprint, footprintTiles } from '../sim/store/geometry';
 import type { Placement } from '../sim/store/geometry';
 import { BACKROOM_DOOR, ENTRANCE, STORE_DEPTH, STORE_WIDTH, isInsideStore } from '../sim/store/layout';
@@ -35,6 +36,14 @@ const COLORS = {
   selected: 0xffd86b,
   door: 0x7a5a3c,
   dispatch: 0xff9a3c,
+};
+
+/** 依今天天氣蓋在店面上的淡色調（雨偏藍灰、熱偏暖黃、冷偏冷藍）；晴天不加 */
+const WEATHER_TINT: Readonly<Record<Weather, { color: number; alpha: number } | null>> = {
+  sunny: null,
+  rainy: { color: 0x4a5d7a, alpha: 0.16 },
+  hot: { color: 0xffb830, alpha: 0.13 },
+  cold: { color: 0x6fb4ff, alpha: 0.15 },
 };
 
 /** 派工標記在設施上方浮起的高度 */
@@ -104,7 +113,11 @@ export async function createStoreScene(host: HTMLElement, controller: Controller
   const objects = new Container({ sortableChildren: true });
   const badges = new Graphics();
   const markers = new Graphics();
-  world.addChild(drawWalls(), drawFloor(), drawEntrance(), overlay, objects, markers, badges);
+  // 天氣色調蓋在牆、地板、設施與人物上；派工標記與庫存徽章在它之上，維持清楚
+  const weatherTint = new Graphics();
+  weatherTint.eventMode = 'none';
+  world.addChild(drawWalls(), drawFloor(), drawEntrance(), overlay, objects, weatherTint, markers, badges);
+  let tintedWeather: Weather | null = null;
 
   const camera = new Camera(viewportOf(app), STORE_BOUNDS);
   const viewListeners = new Set<() => void>();
@@ -188,6 +201,10 @@ export async function createStoreScene(host: HTMLElement, controller: Controller
   for (const [type, fn, opts] of listeners) canvas.addEventListener(type, fn, opts);
 
   const redraw = () => {
+    if (game.today.weather !== tintedWeather) {
+      tintedWeather = game.today.weather;
+      drawWeatherTint(weatherTint, tintedWeather);
+    }
     drawObjects(objects, game, controller);
     drawOverlay(overlay, game, controller);
     drawDispatchMarkers(markers, game);
@@ -363,6 +380,31 @@ function drawFloor(): Graphics {
 }
 
 /** 後方兩面牆：沿 y = 0（右後）與 x = 0（左後）的邊 */
+/** 店面（牆與地板）的外框多邊形，填上今天天氣的色調 */
+function drawWeatherTint(g: Graphics, weather: Weather): void {
+  g.clear();
+  const tint = WEATHER_TINT[weather];
+  if (!tint) return;
+  const origin = gridToScreen(0, 0);
+  const backRight = gridToScreen(STORE_WIDTH, 0);
+  const front = gridToScreen(STORE_WIDTH, STORE_DEPTH);
+  const backLeft = gridToScreen(0, STORE_DEPTH);
+  g.poly([
+    backLeft.x,
+    backLeft.y - WALL_HEIGHT,
+    origin.x,
+    origin.y - WALL_HEIGHT,
+    backRight.x,
+    backRight.y - WALL_HEIGHT,
+    backRight.x,
+    backRight.y,
+    front.x,
+    front.y,
+    backLeft.x,
+    backLeft.y,
+  ]).fill(tint);
+}
+
 function drawWalls(): Graphics {
   const g = new Graphics();
   const origin = gridToScreen(0, 0);
