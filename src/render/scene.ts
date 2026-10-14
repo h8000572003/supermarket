@@ -3,7 +3,7 @@ import { FIXTURES } from '../sim/catalog/fixtures';
 import type { FixtureKind } from '../sim/catalog/fixtures';
 import type { Walker } from '../sim/agents/walker';
 import type { Game } from '../sim/game';
-import { accessTiles, footprint, footprintTiles, slotAccessTile, staffAccessTiles } from '../sim/store/geometry';
+import { accessTiles, footprint, footprintTiles } from '../sim/store/geometry';
 import type { Placement } from '../sim/store/geometry';
 import { BACKROOM_DOOR, ENTRANCE, STORE_DEPTH, STORE_WIDTH, isInsideStore } from '../sim/store/layout';
 import type { GridPoint } from '../sim/store/layout';
@@ -11,7 +11,7 @@ import type { Controller } from '../ui/controller';
 import { PersonSprite, STAFF_LOOK, customerLook, loadAgentTextures } from './agent-sprites';
 import type { PersonLook } from './agent-sprites';
 import { createFixtureSprites, loadFixtureTextures } from './fixture-sprites';
-import { createStockItems, dispatchBadge, drawChangeoverMarkers, drawStockAlerts, loadProductTextures } from './stock-visuals';
+import { createStockItems, dispatchTiles, drawBadges, loadProductTextures } from './stock-visuals';
 import type { FixtureStyle } from './fixture-sprites';
 import { TILE_HEIGHT, TILE_WIDTH, gridToScreen, screenToGrid, tileDiamond } from './iso';
 import type { ScreenPoint } from './iso';
@@ -102,10 +102,9 @@ export async function createStoreScene(host: HTMLElement, controller: Controller
 
   const overlay = new Graphics();
   const objects = new Container({ sortableChildren: true });
-  const stockAlerts = new Graphics();
-  const changeoverBadges = new Graphics();
+  const badges = new Graphics();
   const markers = new Graphics();
-  world.addChild(drawWalls(), drawFloor(), drawEntrance(), overlay, objects, stockAlerts, changeoverBadges, markers);
+  world.addChild(drawWalls(), drawFloor(), drawEntrance(), overlay, objects, markers, badges);
 
   const camera = new Camera(viewportOf(app), STORE_BOUNDS);
   const viewListeners = new Set<() => void>();
@@ -191,9 +190,8 @@ export async function createStoreScene(host: HTMLElement, controller: Controller
   const redraw = () => {
     drawObjects(objects, game, controller);
     drawOverlay(overlay, game, controller);
-    drawStockAlerts(stockAlerts, game);
-    drawChangeoverMarkers(changeoverBadges, game);
     drawDispatchMarkers(markers, game);
+    drawBadges(badges, game);
   };
   redraw();
   const unsubscribeGame = game.subscribe(redraw);
@@ -340,27 +338,15 @@ function drawOverlay(g: Graphics, game: Game, { interaction }: Controller): void
   }
 }
 
-/** 派工標記：地板上標出店員要站的格子，設施上方浮著「!」 */
+/** 派工標記：地板上標出店員要站的格子與那一格設施（設施上方的「!」由 drawBadges 畫） */
 function drawDispatchMarkers(g: Graphics, game: Game): void {
   g.clear();
   for (const d of game.dispatches) {
     const f = game.fixture(d.kind === 'slot' ? d.fixtureId : d.registerId);
-    if (!f) continue;
-    const def = FIXTURES[f.kind];
-    const stand = d.kind === 'slot' ? slotAccessTile(def, f, d.slotIndex) : staffAccessTiles(def, f)[0];
-    if (!stand) continue;
-    // 標記浮在與站立格相鄰的那一格設施上
-    const tiles = footprintTiles(footprint(def, f));
-    const tile = tiles.find((t) => Math.abs(t.x - stand.x) + Math.abs(t.y - stand.y) === 1) ?? tiles[0];
-    if (!tile) continue;
-    g.poly(tileDiamond(stand.x, stand.y)).fill({ color: COLORS.dispatch, alpha: 0.35 }).stroke({ width: 2, color: COLORS.dispatch });
-    g.poly(tileDiamond(tile.x, tile.y)).stroke({ width: 3, color: COLORS.dispatch });
-    const top = gridToScreen(tile.x + 0.5, tile.y + 0.5);
-    const { y, r } = dispatchBadge(tile);
-    g.moveTo(top.x, y + 16).lineTo(top.x, top.y - TILE_HEIGHT * 0.6).stroke({ width: 2, color: COLORS.dispatch, alpha: 0.8 });
-    g.circle(top.x, y, r).fill(COLORS.dispatch).stroke({ width: 2, color: 0xffffff });
-    g.roundRect(top.x - 2, y - 8, 4, 10, 2).fill(0xffffff);
-    g.circle(top.x, y + 6, 2.2).fill(0xffffff);
+    const at = f && dispatchTiles(f, d);
+    if (!at) continue;
+    g.poly(tileDiamond(at.stand.x, at.stand.y)).fill({ color: COLORS.dispatch, alpha: 0.35 }).stroke({ width: 2, color: COLORS.dispatch });
+    g.poly(tileDiamond(at.tile.x, at.tile.y)).stroke({ width: 3, color: COLORS.dispatch });
   }
 }
 

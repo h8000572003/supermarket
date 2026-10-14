@@ -6,7 +6,9 @@ import { minimal, neglectResponse, overspend, simulate, standard, worstResponse 
  * 平衡守門：調整數值後，這些經營結果的大方向不應改變。
  * 詳細數字用 `npm run balance` 查看。
  */
-describe('平衡', () => {
+// 每個案例都完整模擬 30 天（最差應對的案例跑兩種應對），單獨執行約 1–2.5 秒；
+// 與其他測試平行時可能超過預設的 5 秒，所以放寬這組的時限
+describe('平衡', { timeout: 30_000 }, () => {
   it.each([1, 2, 3])('標準經營撐過 30 天且資金成長（種子 %i）', (seed) => {
     const rows = simulate(standard, 30, seed);
     expect(rows).toHaveLength(30);
