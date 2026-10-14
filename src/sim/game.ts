@@ -612,7 +612,7 @@ export class Game {
   /**
    * 指定格位的商品（null 為清空）。
    * 準備階段立即生效：原本的陳列庫存退回倉庫。營業時段發起換貨（ADR 0004）：
-   * 店員下架前舊商品照賣，下架那一刻格位才改成新商品。
+   * 店員下架前舊商品照賣，下架那一刻格位才改成新商品；陳列庫存為 0 時立即生效。
    */
   assignSlot(fixtureId: string, index: number, productId: string | null): Result {
     if (this._phase !== 'prep' && this._phase !== 'open') return fail('not-prep-phase');
@@ -630,10 +630,29 @@ export class Game {
     return ok(undefined);
   }
 
-  /** 營業中發起（或更新目標）換貨；指定成目前的商品且沒有換貨時不做任何事 */
+  /**
+   * 營業中指定格位商品（ADR 0004）：
+   * - 陳列庫存為 0：立即生效，不建立換貨（原有的換貨一併取消）。
+   * - 下架前改回目前的商品：取消換貨，已認領但還沒取下的下架放下。
+   * - 其他：發起換貨，或只更新既有換貨的目標。
+   */
   private startChangeover(fixtureId: string, slotIndex: number, productId: string | null): void {
+    const slot = this.inventory.slot(fixtureId, slotIndex);
+    if (!slot) return;
     const existing = this.changeover(fixtureId, slotIndex);
-    if (!existing && this.inventory.slot(fixtureId, slotIndex)?.productId === productId) return;
+    const sameProduct = slot.productId === productId;
+    if (sameProduct || totalQty(slot.batches) === 0) {
+      if (existing) {
+        this._changeovers = this._changeovers.filter((c) => c !== existing);
+        for (const agent of this.agents) agent.abandonClearOut(fixtureId, slotIndex, this.reservedSlots);
+      }
+      if (!sameProduct) {
+        this.inventory.assignSlot(fixtureId, slotIndex, productId);
+        // 還沒取貨的一般補貨是補舊商品的，放下後重新挑選
+        for (const agent of this.agents) agent.abandonRestock(fixtureId, slotIndex, this.reservedSlots);
+      }
+      return;
+    }
     const next: Changeover = { fixtureId, slotIndex, productId };
     this._changeovers = existing
       ? this._changeovers.map((c) => (c === existing ? next : c))

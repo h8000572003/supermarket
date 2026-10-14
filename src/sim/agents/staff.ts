@@ -127,6 +127,14 @@ export class StaffAgent extends Walker {
     this.dropTask(reserved);
   }
 
+  /** 換貨取消：已認領但還沒取下舊商品的下架放下，並釋出格位的認領 */
+  abandonClearOut(fixtureId: string, slotIndex: number, reserved: Set<string>): void {
+    const t = this.task;
+    if (t?.kind !== 'clear-out' || t.fixtureId !== fixtureId || t.slotIndex !== slotIndex) return;
+    if (this.carrying.length > 0) return;
+    this.dropTask(reserved);
+  }
+
   /** 收銀台沒人排隊時解除收銀，回去補貨 */
   releaseRegister(): void {
     this.registerId = null;

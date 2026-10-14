@@ -344,3 +344,181 @@ describe('換貨：打烊', () => {
     expect(product(0)).toBe('green-tea');
   });
 });
+
+describe('換貨：下架前的更改', () => {
+  it('下架前改回原商品：換貨取消，舊商品仍在架上', () => {
+    const { game, fridge, qty, product } = store({ staff: 0 });
+    game.openStore();
+    game.assignSlot(fridge, 0, 'green-tea');
+    expect(game.assignSlot(fridge, 0, 'cola').ok).toBe(true);
+    expect(game.changeover(fridge, 0)).toBeNull();
+    expect(game.changeovers).toEqual([]);
+    expect(product(0)).toBe('cola');
+    expect(qty(0)).toBe(CAP);
+    runToClose(game);
+    // 打烊時沒有換貨要完成
+    expect(product(0)).toBe('cola');
+    expect(qty(0)).toBe(CAP);
+    expect(game.backroomQty('cola')).toBe(12);
+  });
+
+  it('取消換貨時，已認領但還沒取下的店員放下下架並釋出格位', () => {
+    const { game, fridge, qty, product } = store();
+    game.openStore();
+    game.assignSlot(fridge, 0, 'green-tea');
+    tickResolving(game, STEP_MS);
+    const agent = game.staffAgents[0]!;
+    expect(agent.task).toMatchObject({ kind: 'clear-out', slotIndex: 0 });
+    game.assignSlot(fridge, 0, 'cola');
+    expect(agent.task).toBeNull();
+    expect(agent.activity).toBe('idle');
+    // 舊商品沒被取下
+    stepUntil(game, () => game.step >= 200);
+    expect(product(0)).toBe('cola');
+    expect(qty(0)).toBe(CAP);
+    expect(game.backroomQty('cola')).toBe(12);
+    // 認領已釋出：再次換貨時店員會來下架
+    game.assignSlot(fridge, 0, 'green-tea');
+    tickResolving(game, STEP_MS);
+    expect(agent.task).toMatchObject({ kind: 'clear-out', slotIndex: 0 });
+    stepUntil(game, () => game.changeover(fridge, 0) === null);
+    expect(game.phase).toBe('open');
+    expect(product(0)).toBe('green-tea');
+  });
+
+  it('取消換貨後，舊商品重新列入一般補貨', () => {
+    // 格位 3 低於補貨門檻；店員還沒認領前就發起換貨再取消
+    const { game, fridge, qty, product } = store({ slot3: 2 });
+    game.openStore();
+    game.assignSlot(fridge, 3, 'green-tea');
+    game.assignSlot(fridge, 3, 'cola');
+    expect(game.changeovers).toEqual([]);
+    stepUntil(game, () => qty(3) === CAP);
+    expect(game.phase).toBe('open');
+    expect(product(3)).toBe('cola');
+    expect(game.backroomQty('cola')).toBe(12 - (CAP - 2));
+  });
+
+  it('下架前改成第三種商品：只更新換貨目標，下架後格位為第三種商品', () => {
+    const { game, fridge, qty, product } = store();
+    game.openStore();
+    game.assignSlot(fridge, 0, 'green-tea');
+    tickResolving(game, STEP_MS);
+    const agent = game.staffAgents[0]!;
+    const claimed = agent.task;
+    expect(claimed).toMatchObject({ kind: 'clear-out', slotIndex: 0 });
+    expect(game.assignSlot(fridge, 0, 'water').ok).toBe(true);
+    expect(game.changeovers).toEqual([{ fixtureId: fridge, slotIndex: 0, productId: 'water' }]);
+    // 店員照原本的下架繼續，不會重來
+    expect(agent.task).toBe(claimed);
+    expect(product(0)).toBe('cola');
+    stepUntil(game, () => game.changeover(fridge, 0) === null);
+    expect(game.phase).toBe('open');
+    expect(product(0)).toBe('water');
+    expect(qty(0)).toBe(0);
+    stepUntil(game, () => agent.carrying.length === 0);
+    expect(game.backroomQty('cola')).toBe(12 + CAP);
+  });
+
+  it('改成第三種商品後打烊：格位為第三種商品', () => {
+    const { game, fridge, product } = store({ staff: 0 });
+    game.openStore();
+    game.assignSlot(fridge, 0, 'green-tea');
+    game.assignSlot(fridge, 0, 'water');
+    runToClose(game);
+    expect(product(0)).toBe('water');
+    expect(game.backroomQty('cola')).toBe(12 + CAP);
+  });
+});
+
+describe('換貨：陳列庫存為 0', () => {
+  it('營業中更換空格位立即生效，沒有換貨目標；之後新商品照一般補貨上架', () => {
+    const { game, fridge, qty, product } = store({ slot3: 0 });
+    game.openStore();
+    expect(qty(3)).toBe(0);
+    expect(game.assignSlot(fridge, 3, 'green-tea').ok).toBe(true);
+    expect(product(3)).toBe('green-tea');
+    expect(game.changeover(fridge, 3)).toBeNull();
+    expect(game.changeovers).toEqual([]);
+    stepUntil(game, () => qty(3) === CAP);
+    expect(game.phase).toBe('open');
+    expect(product(3)).toBe('green-tea');
+    expect(game.backroomQty('cola')).toBe(12);
+  });
+
+  it('已認領補舊商品、還沒取貨的店員改補新商品', () => {
+    const { game, fridge, qty, product } = store({ slot3: 0 });
+    game.openStore();
+    tickResolving(game, STEP_MS);
+    const agent = game.staffAgents[0]!;
+    expect(agent.task).toMatchObject({ kind: 'restock', slotIndex: 3, productId: 'cola' });
+    game.assignSlot(fridge, 3, 'green-tea');
+    expect(agent.task).toBeNull();
+    stepUntil(game, () => qty(3) === CAP);
+    expect(game.phase).toBe('open');
+    expect(product(3)).toBe('green-tea');
+    expect(game.backroomQty('cola')).toBe(12);
+  });
+
+  it('營業中把空格位改成不指定商品：立即清空', () => {
+    const { game, fridge, product } = store({ slot3: 0, staff: 0 });
+    game.openStore();
+    expect(game.assignSlot(fridge, 3, null).ok).toBe(true);
+    expect(product(3)).toBeNull();
+    expect(game.changeovers).toEqual([]);
+  });
+
+  it('換貨中舊商品賣光後再更改：立即生效，原本的換貨取消', () => {
+    const { game, fridge } = busyStore(); // 沒有店員：沒有人會來下架
+    game.openStore();
+    game.assignSlot(fridge, 0, 'water');
+    stepUntil(game, () => totalQty(game.slots(fridge)[0]!.batches) === 0);
+    expect(game.phase).toBe('open');
+    expect(game.changeover(fridge, 0)).not.toBeNull();
+    expect(game.assignSlot(fridge, 0, 'green-tea').ok).toBe(true);
+    expect(game.slots(fridge)[0]!.productId).toBe('green-tea');
+    expect(game.changeover(fridge, 0)).toBeNull();
+    expect(game.changeovers).toEqual([]);
+  });
+});
+
+describe('換貨：改成不指定商品', () => {
+  it('下架後格位不指定商品，舊商品退回倉庫，之後不再補貨', () => {
+    const { game, fridge, qty, product } = store();
+    game.openStore();
+    expect(game.assignSlot(fridge, 0, null).ok).toBe(true);
+    expect(game.changeover(fridge, 0)).toEqual({ fixtureId: fridge, slotIndex: 0, productId: null });
+    expect(product(0)).toBe('cola');
+    const agent = game.staffAgents[0]!;
+    stepUntil(game, () => game.changeover(fridge, 0) === null);
+    expect(game.phase).toBe('open');
+    expect(product(0)).toBeNull();
+    expect(qty(0)).toBe(0);
+    stepUntil(game, () => agent.carrying.length === 0);
+    expect(game.backroomQty('cola')).toBe(12 + CAP);
+    runToClose(game);
+    expect(product(0)).toBeNull();
+    expect(qty(0)).toBe(0);
+    expect(game.backroomQty('cola')).toBe(12 + CAP);
+  });
+
+  it('打烊時還沒下架：格位不指定商品，舊商品退回倉庫', () => {
+    const { game, fridge, product, total } = store({ staff: 0 });
+    game.openStore();
+    game.assignSlot(fridge, 0, null);
+    const cola = total('cola');
+    runToClose(game);
+    expect(product(0)).toBeNull();
+    expect(game.backroomQty('cola')).toBe(12 + CAP);
+    expect(total('cola')).toBe(cola);
+  });
+
+  it('清空換貨下架前改回原商品：取消', () => {
+    const { game, fridge, product } = store({ staff: 0 });
+    game.openStore();
+    game.assignSlot(fridge, 0, null);
+    game.assignSlot(fridge, 0, 'cola');
+    expect(game.changeovers).toEqual([]);
+    expect(product(0)).toBe('cola');
+  });
+});

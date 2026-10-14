@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MAX_STEPS_PER_TICK, STEP_MS } from '../sim/clock/clock';
 import { Game } from '../sim/game';
+import { totalQty } from '../sim/inventory/batch';
 import { SNAPSHOT_VERSION } from '../sim/snapshot';
 import { playThroughDay, runOpenHours, tickResolving } from '../sim/test-helpers';
 import { SAVE_KEY, clearSave, loadGame, saveGame } from './save';
@@ -125,10 +126,14 @@ describe('存檔與讀檔', () => {
     const storage = new MemoryStorage();
     const game = establishedGame();
     const fridge = game.fixtures.find((f) => f.kind === 'fridge')!.id;
+    // 陳列庫存為 0 的格位換貨會立即生效：等隔天可樂送達、先擺上架。
+    // 沒有店員來下架，換貨留到打烊時直接完成
+    playThroughDay(game);
+    for (const s of game.staff) game.fireStaff(s.id);
+    game.restockSlot(fridge, 0);
     game.openStore();
-    // 打烊前幾分鐘才換貨：店員來不及下架，打烊時直接完成
-    while (game.minuteOfDay < 22 * 60 + 58) tickResolving(game, STEP_MS / game.speed);
     expect(game.slots(fridge)[0]!.productId).toBe('cola');
+    expect(totalQty(game.slots(fridge)[0]!.batches)).toBeGreaterThan(0);
     expect(game.assignSlot(fridge, 0, 'water').ok).toBe(true);
     expect(game.changeovers).toHaveLength(1);
     while (game.phase === 'open') tickResolving(game, STEP_MS * MAX_STEPS_PER_TICK);
