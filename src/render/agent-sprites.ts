@@ -1,4 +1,5 @@
 import { Container, Graphics, Text } from 'pixi.js';
+import type { CustomerType } from '../sim/agents/demand';
 
 /**
  * 顧客與店員的外觀：以程式繪製的 Q 版小人，風格與商品圖、貨架一致（深色描邊、平塗、亮面）。
@@ -20,7 +21,15 @@ export interface PersonLook {
   readonly hairStyle: HairStyle;
   /** 店員：白襯衫加制服背心與帽子 */
   readonly uniform?: boolean;
+  /** 顧客類型的配件：上班族領帶、學生書包、家庭大提籃 */
+  readonly accessory?: Accessory;
+  /** 配件的主色 */
+  readonly accessoryColor?: number;
 }
+
+export type Accessory = 'tie' | 'backpack' | 'big-basket';
+
+const ACCESSORY: Record<CustomerType, Accessory> = { office: 'tie', student: 'backpack', family: 'big-basket' };
 
 export const STAFF_LOOK: PersonLook = {
   shirt: 0xffffff,
@@ -36,18 +45,32 @@ const PANTS = [0x37474f, 0x5d4037, 0x3f51b5, 0x546e7a, 0x2e7d32];
 const HAIRS = [0x2b1d14, 0x5a3a22, 0x8a6a3a, 0x1d1d1d, 0xb0b0b0, 0xc0392b];
 const SKINS = [0xf3cfa3, 0xe8b88a, 0xc68e62, 0x8d5a3b];
 const STYLES: readonly HairStyle[] = ['short', 'long', 'bun', 'short', 'cap'];
+/** 上班族：淺色襯衫、深色西裝褲、不戴帽 */
+const OFFICE_SHIRTS = [0xffffff, 0xd6e9fb, 0xeceff1, 0xfff8e1];
+const OFFICE_PANTS = [0x263238, 0x37474f, 0x1a237e];
+const OFFICE_STYLES: readonly HairStyle[] = ['short', 'long', 'bun', 'short'];
+const TIES = [0xc62828, 0x1565c0, 0x6a1b9a, 0x2e7d32];
+const BACKPACKS = [0x1e88e5, 0xe53935, 0xfdd835, 0x43a047, 0x8e24aa, 0xfb8c00];
 
-/** 依顧客 id 決定固定的外觀 */
-export function customerLook(id: string): PersonLook {
+/** 依顧客 id 決定固定的外觀；依類型加上配件（上班族領帶、學生書包、家庭大提籃） */
+export function customerLook(id: string, type?: CustomerType): PersonLook {
   let h = 0;
   for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
   const pick = <T>(list: readonly T[], shift: number) => list[(h >>> shift) % list.length] as T;
+  const office = type === 'office';
+  // 短 id 的雜湊值很小，高位元幾乎都是 0：配件顏色另用打散過的雜湊挑，才會有變化
+  const mixed = Math.imul(h ^ (h >>> 7), 0x9e3779b1) >>> 0;
+  const colors = type === 'office' ? TIES : BACKPACKS;
   return {
-    shirt: pick(SHIRTS, 0),
-    pants: pick(PANTS, 4),
+    shirt: pick(office ? OFFICE_SHIRTS : SHIRTS, 0),
+    pants: pick(office ? OFFICE_PANTS : PANTS, 4),
     hair: pick(HAIRS, 8),
     skin: pick(SKINS, 12),
-    hairStyle: pick(STYLES, 16),
+    hairStyle: pick(office ? OFFICE_STYLES : STYLES, 16),
+    ...(type && {
+      accessory: ACCESSORY[type],
+      accessoryColor: colors[(mixed >>> 13) % colors.length] as number,
+    }),
   };
 }
 
@@ -58,6 +81,8 @@ function drawPerson(g: Graphics, look: PersonLook): void {
   g.ellipse(0, 0, 9, 4).fill({ color: 0x000000, alpha: 0.2 });
   // 長髮在身體後面
   if (look.hairStyle === 'long') g.roundRect(-7, -33, 14, 17, 5).fill(look.hair).stroke(OUTLINE);
+  // 書包在身體後面（從側後方露出）
+  if (look.accessory === 'backpack') drawBackpack(g, look.accessoryColor ?? 0x1e88e5);
   // 腳與鞋
   g.roundRect(-5, -9, 4, 9, 1.5).fill(look.pants).stroke(OUTLINE);
   g.roundRect(1, -9, 4, 9, 1.5).fill(look.pants).stroke(OUTLINE);
@@ -77,6 +102,14 @@ function drawPerson(g: Graphics, look: PersonLook): void {
     // 衣服亮面
     g.roundRect(-4.5, -21, 2.5, 9, 1.2).fill({ color: 0xffffff, alpha: 0.35 });
   }
+  if (look.accessory === 'tie') drawTie(g, look.accessoryColor ?? 0xc62828);
+  if (look.accessory === 'backpack') {
+    // 書包背帶
+    const strap = { width: 1.8, color: darken(look.accessoryColor ?? 0x1e88e5) };
+    g.moveTo(-4, -22.5).lineTo(-4.5, -13).stroke(strap);
+    g.moveTo(4, -22.5).lineTo(4.5, -13).stroke(strap);
+  }
+  if (look.accessory === 'big-basket') drawBigBasket(g);
   // 頭
   g.circle(0, -30, 6.5).fill(look.skin).stroke(OUTLINE);
   g.circle(-2.3, -29.5, 0.9).fill(0x3b2f2a);
@@ -99,6 +132,45 @@ function drawPerson(g: Graphics, look: PersonLook): void {
       g.moveTo(0 - 6.8, -31).arc(0, -31, 6.8, Math.PI, 0).fill(look.hair).stroke(OUTLINE);
       g.roundRect(-6.8, -32, 4, 4, 1.5).fill(look.hair);
   }
+}
+
+/** 顏色調暗（配件的陰影與背帶） */
+function darken(color: number, f = 0.7): number {
+  const r = Math.round(((color >> 16) & 0xff) * f);
+  const gg = Math.round(((color >> 8) & 0xff) * f);
+  const b = Math.round((color & 0xff) * f);
+  return (r << 16) | (gg << 8) | b;
+}
+
+/** 上班族的領帶：白領口、領結與往下變寬的領帶 */
+function drawTie(g: Graphics, color: number): void {
+  g.poly([-3.5, -23, 0, -20.5, 3.5, -23, 2.5, -21, 0, -19.5, -2.5, -21]).fill(0xffffff).stroke(OUTLINE);
+  g.poly([-1.3, -21, 1.3, -21, 0.9, -19.2, -0.9, -19.2]).fill(color).stroke({ ...OUTLINE, width: 0.9 });
+  g.poly([-0.9, -19.2, 0.9, -19.2, 2, -12.5, 0, -10.5, -2, -12.5]).fill(color).stroke({ ...OUTLINE, width: 0.9 });
+  g.moveTo(-1.2, -16).lineTo(1.4, -14.6).stroke({ width: 0.8, color: 0xffffff, alpha: 0.5 });
+}
+
+/** 學生的書包：揹在身後、從身體兩側露出 */
+function drawBackpack(g: Graphics, color: number): void {
+  g.roundRect(-10.5, -25, 21, 15, 4).fill(color).stroke(OUTLINE);
+  g.roundRect(-10.5, -17, 4, 6, 1.5).fill(darken(color)).stroke({ ...OUTLINE, width: 0.9 });
+  g.roundRect(6.5, -17, 4, 6, 1.5).fill(darken(color)).stroke({ ...OUTLINE, width: 0.9 });
+  g.moveTo(-6, -27).arc(0, -25, 4, Math.PI * 1.15, Math.PI * 1.85).stroke({ width: 1.6, color: darken(color) });
+}
+
+/** 家庭的大提籃：掛在手臂上、比一般購物籃大，裝著蔬菜與長棍麵包 */
+function drawBigBasket(g: Graphics): void {
+  // 露出籃子的貨
+  g.roundRect(-17.5, -22, 3, 10, 1.5).fill(0xe0b070).stroke({ ...OUTLINE, width: 0.9 });
+  g.circle(-11, -15.5, 2.6).fill(0x66bb6a).stroke({ ...OUTLINE, width: 0.9 });
+  g.circle(-14.5, -15, 2.2).fill(0xff7043).stroke({ ...OUTLINE, width: 0.9 });
+  // 提把
+  g.moveTo(-19, -14).arc(-12.5, -14, 6.5, Math.PI, 0).stroke({ width: 1.8, color: 0x6d4c2f });
+  // 籃身（藤編）
+  g.poly([-20, -14, -5, -14, -6.5, -3, -18.5, -3]).fill(0xc8955a).stroke(OUTLINE);
+  g.moveTo(-19.3, -10.5).lineTo(-5.7, -10.5).stroke({ width: 0.9, color: 0x8d6e4a });
+  g.moveTo(-18.8, -6.8).lineTo(-6.2, -6.8).stroke({ width: 0.9, color: 0x8d6e4a });
+  g.rect(-20.5, -15, 16, 2).fill(0xa47148).stroke({ ...OUTLINE, width: 0.9 });
 }
 
 /** 店員搬運中的紙箱 */

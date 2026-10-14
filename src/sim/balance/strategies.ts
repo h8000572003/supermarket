@@ -1,4 +1,4 @@
-import { WEATHER_DEMAND, conditionsArrivalMultiplier, listShare } from '../agents/demand';
+import { WEATHER_DEMAND, conditionsArrivalMultiplier, expectedListShare } from '../agents/demand';
 import { CATEGORIES, CATEGORY_IDS, PRODUCTS, productById } from '../catalog/products';
 import type { CategoryId } from '../catalog/products';
 import type { FixtureKind } from '../catalog/fixtures';
@@ -165,16 +165,16 @@ function standardPrep(game: Game, plan: StorePlan, tomorrowFactor?: (category: C
 
 /**
  * 某天某類別的預期需求倍率（相對晴天平日）：天氣與星期的來客倍率 ×
- * 天氣的類別需求倍率讓該類別出現在購物清單的機率變化。
+ * 該類別出現在購物清單的機率變化（天氣的類別需求倍率，以及星期改變的顧客類型比例）。
  */
 export function expectedDemandFactor(
   conditions: Pick<DayConditions, 'weather' | 'weekend'>,
   category: CategoryId,
   available: readonly CategoryId[],
 ): number {
-  const base = listShare(available)[category] ?? 0;
+  const base = expectedListShare(available, {}, false)[category] ?? 0;
   if (base === 0) return 1;
-  const shifted = listShare(available, WEATHER_DEMAND[conditions.weather])[category] ?? 0;
+  const shifted = expectedListShare(available, WEATHER_DEMAND[conditions.weather], conditions.weekend)[category] ?? 0;
   return (conditionsArrivalMultiplier(conditions) * shifted) / base;
 }
 

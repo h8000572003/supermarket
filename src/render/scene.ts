@@ -239,7 +239,7 @@ export async function createStoreScene(host: HTMLElement, controller: Controller
       sync(staff, () => STAFF_LOOK).carrying = staff.carrying.length > 0;
     }
     for (const customer of game.customerAgents) {
-      const sprite = sync(customer, () => customerLook(customer.id));
+      const sprite = sync(customer, () => customerLook(customer.id, customer.type));
       sprite.holdingBasket = customer.basket.length > 0 && !customer.outcome;
       sprite.setMood(customer.mood);
     }

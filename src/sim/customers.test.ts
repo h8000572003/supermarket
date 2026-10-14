@@ -111,8 +111,8 @@ describe('顧客與收銀', () => {
     expect(game.lastReport!.customers.served).toBe(0);
   });
 
-  it('售價貴 50% 以上時沒人買', () => {
-    const { game } = store({ priceFactor: 1.6 });
+  it('售價貴到連最不在意價格的上班族都不買（貴 2/3 以上）時沒人買', () => {
+    const { game } = store({ priceFactor: 1.7 });
     runOpenHours(game);
     expect(game.lastReport!.revenue).toBe(0);
   });

@@ -81,8 +81,12 @@ describe('天氣與星期影響來客', () => {
     const sunny = rate({});
     expect(sunny.rate).toBeCloseTo(arrivalsPerHour(sunny.game.minuteOfDay) * arrivalMultiplier(sunny.game.reputation));
     expect(rate({ testWeather: ['rainy'] }).rate).toBeCloseTo(sunny.rate * 0.75);
-    expect(rate({ testFirstWeekday: 'sat' }).rate).toBeCloseTo(sunny.rate * 1.2);
-    expect(rate({ testWeather: ['rainy'], testFirstWeekday: 'sun' }).rate).toBeCloseTo(sunny.rate * 0.9);
+    // 週末的時段曲線不同（家庭多、上班族少；整天總量相同），再乘週末倍率
+    const weekendCurve = (game: Game) => arrivalsPerHour(game.minuteOfDay, true) * arrivalMultiplier(game.reputation);
+    const sat = rate({ testFirstWeekday: 'sat' });
+    expect(sat.rate).toBeCloseTo(weekendCurve(sat.game) * 1.2);
+    const rainySun = rate({ testWeather: ['rainy'], testFirstWeekday: 'sun' });
+    expect(rainySun.rate).toBeCloseTo(weekendCurve(rainySun.game) * 0.9);
     // 熱與冷只改類別需求，不改來客
     expect(rate({ testWeather: ['hot'] }).rate).toBeCloseTo(sunny.rate);
     expect(rate({ testWeather: ['cold'] }).rate).toBeCloseTo(sunny.rate);
@@ -105,7 +109,9 @@ describe('天氣與星期影響來客', () => {
     for (let d = 0; d < 10; d++) {
       game.openStore();
       const expected =
-        arrivalsPerHour(game.minuteOfDay) * arrivalMultiplier(game.reputation) * conditionsArrivalMultiplier(game.today);
+        arrivalsPerHour(game.minuteOfDay, game.today.weekend) *
+        arrivalMultiplier(game.reputation) *
+        conditionsArrivalMultiplier(game.today);
       expect(game.arrivalsPerHourNow).toBeCloseTo(expected);
       while (game.phase === 'open') tickResolving(game, STEP_MS * MAX_STEPS_PER_TICK);
       game.startNextDay();
@@ -127,7 +133,8 @@ describe('天氣影響購物清單的類別', () => {
   });
 
   it('同種子比較：熱天購物清單出現飲料的比例提高、泡麵降低；冷天相反', () => {
-    const seeds = [1, 2, 3];
+    // 期望差距約 0.11（見 listShare）；多取幾個種子以降低抽樣誤差
+    const seeds = [1, 2, 3, 4, 5, 6];
     const sunny = listShareOver(seeds, 'sunny');
     const hot = listShareOver(seeds, 'hot');
     const cold = listShareOver(seeds, 'cold');

@@ -1,3 +1,4 @@
+import { CUSTOMER_TYPES, CUSTOMER_TYPE_IDS } from '../sim/agents/demand';
 import { CATEGORIES, CATEGORY_IDS, productById } from '../sim/catalog/products';
 import type { CategoryId } from '../sim/catalog/products';
 import type { Game } from '../sim/game';
@@ -135,6 +136,9 @@ export function DailyReportPanel({ game }: { game: Game }) {
           <dd>
             {c.entered} / {c.served} 人
           </dd>
+          {CUSTOMER_TYPE_IDS.map((t) => (
+            <TypeRow key={t} name={CUSTOMER_TYPES[t].name} entered={c.byType[t].entered} served={c.byType[t].served} />
+          ))}
           <dt>空手離開（沒賣、缺貨或嫌貴）</dt>
           <dd>{c.leftEmpty} 人</dd>
           <dt>排隊太久放棄</dt>
@@ -228,3 +232,15 @@ function CategorySales({ report }: { report: DailyReport }) {
 
 const formatExpense = (n: number) => (n > 0 ? `−${formatMoney(n)}` : formatMoney(0));
 const formatSigned = (n: number) => `${n >= 0 ? '+' : '−'}${formatMoney(Math.abs(n))}`;
+
+/** 依顧客類型分列的來客 / 結帳人數（縮排在總數下方） */
+function TypeRow({ name, entered, served }: { name: string; entered: number; served: number }) {
+  return (
+    <>
+      <dt className="sub">{name}</dt>
+      <dd className="sub">
+        {entered} / {served} 人
+      </dd>
+    </>
+  );
+}

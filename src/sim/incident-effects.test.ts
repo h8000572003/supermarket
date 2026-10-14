@@ -127,7 +127,9 @@ function kindsOver(game: Game, days: number): IncidentKind[] {
 
 /** 沒有狀況時的來客速率：時段曲線 × 口碑倍率 × 今天的天氣與星期倍率 */
 const baseRate = (game: Game) =>
-  arrivalsPerHour(game.minuteOfDay) * arrivalMultiplier(game.reputation) * conditionsArrivalMultiplier(game.today);
+  arrivalsPerHour(game.minuteOfDay, game.today.weekend) *
+  arrivalMultiplier(game.reputation) *
+  conditionsArrivalMultiplier(game.today);
 
 describe('團客來店', () => {
   it('店內沒有收銀台時不會發生', () => {
@@ -161,16 +163,11 @@ describe('團客來店', () => {
       playUntil(game, 'group-visit');
       const start = game.minuteOfDay;
       expectedNormal += (baseRate(game) * GROUP_VISIT_MINUTES) / 60;
-      const seen = new Set(game.customerAgents.map((c) => c.id));
+      // 以帳上的進店人數計：一進店就因缺貨或沒賣而離開的顧客也算
+      const before = game.todayEntered;
       game.resolveIncident(0);
-      while (game.minuteOfDay < start + GROUP_VISIT_MINUTES) {
-        stepOnce(game);
-        for (const c of game.customerAgents) {
-          if (seen.has(c.id)) continue;
-          seen.add(c.id);
-          entered++;
-        }
-      }
+      while (game.minuteOfDay < start + GROUP_VISIT_MINUTES) stepOnce(game);
+      entered += game.todayEntered - before;
     }
     expect(entered).toBeGreaterThan(expectedNormal * 2);
   });

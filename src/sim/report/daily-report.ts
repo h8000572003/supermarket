@@ -1,3 +1,5 @@
+import { CUSTOMER_TYPE_IDS } from '../agents/demand';
+import type { CustomerType } from '../agents/demand';
 import type { CategoryId } from '../catalog/products';
 import type { DailyGoalResult } from '../goals/daily-goal';
 import type { IncidentRecord } from '../incidents/incidents';
@@ -8,6 +10,12 @@ export interface WasteLine {
   readonly qty: number;
   /** 以進貨成本計的損失 */
   readonly cost: number;
+}
+
+/** 單一顧客類型的來客與結帳人數 */
+export interface TypeCount {
+  readonly entered: number;
+  readonly served: number;
 }
 
 /** 來客統計 */
@@ -22,6 +30,8 @@ export interface CustomerStats {
   readonly abandoned: number;
   /** 平均滿意度（0–100）；沒有顧客時為 null */
   readonly avgSatisfaction: number | null;
+  /** 依顧客類型分列的進店與結帳人數；各類型加總等於 entered 與 served */
+  readonly byType: Readonly<Record<CustomerType, TypeCount>>;
 }
 
 /** 營業日結束時的進度變化 */
@@ -76,6 +86,10 @@ export class DayLedger {
   readonly stockouts = new Map<CategoryId, number>();
   entered = 0;
   served = 0;
+  private readonly byType = Object.fromEntries(CUSTOMER_TYPE_IDS.map((t) => [t, { entered: 0, served: 0 }])) as Record<
+    CustomerType,
+    { entered: number; served: number }
+  >;
   leftEmpty = 0;
   abandoned = 0;
   /** 因缺貨空手離開（空手離開且曾遇到缺貨）的人數 */
@@ -111,13 +125,24 @@ export class DayLedger {
     this.sales.set(productId, (this.sales.get(productId) ?? 0) + 1);
   }
 
+  /** 顧客進店 */
+  recordEntered(type: CustomerType): void {
+    this.entered++;
+    this.byType[type].entered++;
+  }
+
+  /** 顧客離店 */
   recordCustomer(
+    type: CustomerType,
     outcome: 'served' | 'left-empty' | 'abandoned',
     satisfaction: number,
     stockoutCategories: readonly CategoryId[],
   ): void {
     for (const c of stockoutCategories) this.stockouts.set(c, (this.stockouts.get(c) ?? 0) + 1);
-    if (outcome === 'served') this.served++;
+    if (outcome === 'served') {
+      this.served++;
+      this.byType[type].served++;
+    }
     else if (outcome === 'left-empty') {
       this.leftEmpty++;
       if (stockoutCategories.length > 0) this.stockoutEmpty++;
@@ -149,6 +174,10 @@ export class DayLedger {
         leftEmpty: this.leftEmpty,
         abandoned: this.abandoned,
         avgSatisfaction: this.avgSatisfaction,
+        byType: Object.fromEntries(CUSTOMER_TYPE_IDS.map((t) => [t, { ...this.byType[t] }])) as Record<
+          CustomerType,
+          TypeCount
+        >,
       },
       fundsAtStart: this.fundsAtStart,
       fundsAtEnd,

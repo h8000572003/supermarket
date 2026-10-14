@@ -5,6 +5,7 @@ import type { Passable } from '../pathfinding/grid';
 import type { Rng } from '../rng';
 import type { GridPoint } from '../store/layout';
 import { checkoutSatisfaction, clampSatisfaction, purchaseProbability } from './demand';
+import type { CustomerType } from './demand';
 import { Walker } from './walker';
 
 /** 顧客每步移動的格數 */
@@ -79,6 +80,8 @@ export class CustomerAgent extends Walker {
 
   constructor(
     id: string,
+    /** 顧客類型：決定購物清單偏好、價格敏感度與耐心（由 Game 產生顧客時決定） */
+    readonly type: CustomerType,
     readonly shoppingList: readonly CategoryId[],
     readonly maxPatience: number,
     world: CustomerWorld,
@@ -187,7 +190,7 @@ export class CustomerAgent extends Walker {
       return this.nextCategory(world);
     }
     const { salePrice, suggestedPrice } = world.pricing(content.productId);
-    if (world.rng.chance(purchaseProbability(salePrice, suggestedPrice))) {
+    if (world.rng.chance(purchaseProbability(salePrice, suggestedPrice, this.type))) {
       this.basket.push({
         batches: world.takeOne(t.fixtureId, t.slotIndex),
         productId: content.productId,

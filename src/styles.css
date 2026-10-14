@@ -531,6 +531,17 @@ button.active {
   text-align: right;
 }
 
+/* 分列在上一列總數下方的細項（例如依顧客類型） */
+.report dt.sub {
+  padding-left: 1em;
+  font-size: 0.9em;
+}
+
+.report dd.sub {
+  font-size: 0.9em;
+  opacity: 0.85;
+}
+
 .report-note {
   margin: 0;
   font-size: 13px;

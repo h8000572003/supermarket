@@ -14,6 +14,8 @@ import {
   arrivalsPerHour,
   combineDemand,
   conditionsArrivalMultiplier,
+  rollCustomerType,
+  rollPatience,
   rollShoppingList,
 } from './agents/demand';
 import { StaffAgent } from './agents/staff';
@@ -206,9 +208,6 @@ export interface Staff {
 }
 
 const STAFF_NAMES = ['小林', '阿明', '小美', '阿傑', '小芳', '阿凱', '小婷', '阿豪'];
-
-/** 顧客排隊耐心（步數）的範圍 */
-const PATIENCE_RANGE: readonly [number, number] = [80, 140];
 
 /** 緊急叫貨下單到送達的步數 */
 const RUSH_DELIVERY_STEPS = Math.round(RUSH_DELIVERY_MINUTES / MINUTES_PER_STEP);
@@ -503,6 +502,11 @@ export class Game {
     return this.ledger.revenue;
   }
 
+  /** 今天到目前為止進店的顧客人數（含一進店就因找不到想買的類別而離開的顧客） */
+  get todayEntered(): number {
+    return this.ledger.entered;
+  }
+
   /** 等待店長選擇的狀況；沒有時為 null。等待中 tick 不推進遊戲時間 */
   get pendingIncident(): PendingIncident | null {
     const p = this._pendingIncident;
@@ -520,12 +524,12 @@ export class Game {
 
   /**
    * 目前的來客速率（人 / 遊戲小時）：
-   * 時段曲線 × 口碑倍率 × 今天的天氣與星期倍率 × 狀況的暫時來客倍率；營業時段以外為 0
+   * 時段曲線（三種顧客類型相加，週末家庭較多）× 口碑倍率 × 今天的天氣與星期倍率 × 狀況的暫時來客倍率；營業時段以外為 0
    */
   get arrivalsPerHourNow(): number {
     if (this._phase !== 'open') return 0;
     return (
-      arrivalsPerHour(this.minuteOfDay) *
+      arrivalsPerHour(this.minuteOfDay, this.today.weekend) *
       arrivalMultiplier(this._reputation) *
       conditionsArrivalMultiplier(this.today) *
       this.surgeMultiplier()
@@ -1403,16 +1407,18 @@ export class Game {
     if (minute >= CLOSE_MINUTE - LAST_ENTRY_BEFORE_CLOSE || this.customers.length >= MAX_CUSTOMERS_IN_STORE) return;
     const perStep = (this.arrivalsPerHourNow * MINUTES_PER_STEP) / 60;
     if (!this.rng.chance(perStep)) return;
-    const list = rollShoppingList(this.rng, [...this.unlocked], this.demandMultipliers());
-    const patience = this.rng.int(...PATIENCE_RANGE);
-    this.customers.push(new CustomerAgent(`c${this.nextCustomerId++}`, list, patience, this.customerWorld));
-    this.ledger.entered++;
+    // 類型依此刻各類型的來客速率比例抽（天氣、口碑與狀況倍率對各類型相同，不影響比例）
+    const type = rollCustomerType(this.rng, minute, this.today.weekend);
+    const list = rollShoppingList(this.rng, [...this.unlocked], this.demandMultipliers(), type);
+    const patience = rollPatience(this.rng, type);
+    this.customers.push(new CustomerAgent(`c${this.nextCustomerId++}`, type, list, patience, this.customerWorld));
+    this.ledger.recordEntered(type);
   }
 
   private removeDepartedCustomers(): void {
     this.customers = this.customers.filter((c) => {
       if (c.activity !== 'gone') return true;
-      if (c.outcome) this.ledger.recordCustomer(c.outcome, c.satisfaction, c.stockoutCategories);
+      if (c.outcome) this.ledger.recordCustomer(c.type, c.outcome, c.satisfaction, c.stockoutCategories);
       return false;
     });
   }
