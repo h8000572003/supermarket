@@ -22,7 +22,7 @@ import { StaffAgent } from './agents/staff';
 import type { StaffWorld } from './agents/staff';
 import { CLOSE_MINUTE, MAX_STEPS_PER_TICK, MINUTES_PER_STEP, STEPS_PER_DAY, STEP_MS, minuteOfDay } from './clock/clock';
 import type { Speed } from './clock/clock';
-import { goodsTotal, orderTotal } from './economy/purchase-order';
+import { ORDER_CUTOFF_MINUTE, goodsTotal, orderTotal } from './economy/purchase-order';
 import { FlashSales, MAX_FLASH_SALES, flashSalePrice, isFlashSaleTier } from './economy/flash-sale';
 import type { FlashSale, FlashSaleTier } from './economy/flash-sale';
 import type { OrderLine, PurchaseOrder } from './economy/purchase-order';
@@ -106,6 +106,7 @@ export type CommandError =
   | 'rush-limit-reached'
   /** 已過緊急叫貨的最後下單時刻 */
   | 'rush-too-late'
+  | 'order-cutoff'
   /** 這次叫貨不能訂這個類別的商品 */
   | 'wrong-category'
   /** 店員人數已達上限 */
@@ -765,15 +766,20 @@ export class Game {
     return ok(undefined);
   }
 
-  /** 下進貨單並立即付款（商品金額 + 運費）；第 1 天的開幕進貨立即送達，其餘隔天送達 */
+  /**
+   * 下進貨單並立即付款（商品金額 + 運費）；準備階段或營業時段截單前可下（ADR 0005）。
+   * 第 1 天準備階段的開幕進貨立即送達，其餘下一個營業日開店前送達。
+   */
   submitPurchaseOrder(lines: readonly OrderLine[]): Result<PurchaseOrder> {
-    if (this._phase !== 'prep') return fail('not-prep-phase');
+    if (this._phase === 'open') {
+      if (this.minuteOfDay >= ORDER_CUTOFF_MINUTE) return fail('order-cutoff');
+    } else if (this._phase !== 'prep') return fail('not-prep-phase');
     const checked = this.checkOrderLines(lines);
     if (!checked.ok) return checked;
     const nonEmpty = checked.value;
     const total = orderTotal(nonEmpty);
     if (this._funds < total) return fail('insufficient-funds');
-    const opening = isOpeningDelivery(this._day);
+    const opening = this._phase === 'prep' && isOpeningDelivery(this._day);
     const order: PurchaseOrder = {
       lines: nonEmpty,
       placedDay: this._day,

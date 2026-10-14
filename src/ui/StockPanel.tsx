@@ -2,13 +2,14 @@ import { useState } from 'react';
 import { CATEGORIES, CATEGORY_IDS, PRODUCTS } from '../sim/catalog/products';
 import type { CategoryId, ProductDef } from '../sim/catalog/products';
 import { FLASH_SALE_TIERS, MAX_FLASH_SALES } from '../sim/economy/flash-sale';
-import { SHIPPING_FEE, orderTotal } from '../sim/economy/purchase-order';
+import { ORDER_CUTOFF_MINUTE, SHIPPING_FEE, orderTotal } from '../sim/economy/purchase-order';
+import { RUSH_LAST_ORDER_MINUTE } from '../sim/economy/rush-order';
 import { isOpeningDelivery, phaseError } from '../sim/game';
 import type { Controller } from './controller';
 import { FullScreenPage } from './FullScreenPage';
 import { useGameVersion } from './hooks';
 import { useNarrow } from './media';
-import { formatDiscount, formatDuration, formatMoney } from './messages';
+import { formatDiscount, formatDuration, formatMoney, formatTime } from './messages';
 import { snapOrderQty } from './order-qty';
 import { RushOrderSection } from './RushOrderSection';
 import { Stepper } from './Stepper';
@@ -18,7 +19,7 @@ interface StockPanelProps {
   onClose: () => void;
 }
 
-/** 商品與進貨：調整售價、查看倉庫庫存、下進貨單；營業時段售價與進貨單鎖定，可開始限時特價 */
+/** 商品與進貨：調整售價、查看倉庫庫存、下進貨單；營業時段售價鎖定、進貨單 18:00 截單，可開始限時特價 */
 export function StockPanel(props: StockPanelProps) {
   useGameVersion(props.controller.game);
   const order = useStockOrder(props.controller);
@@ -34,6 +35,9 @@ function useStockOrder(controller: Controller) {
 
   const editable = phaseError(game.phase, 'prep') === null;
   const openHours = phaseError(game.phase, 'open') === null;
+  // 一般進貨單：準備階段或營業時段截單前可下（ADR 0005）
+  const cutOff = openHours && game.minuteOfDay >= ORDER_CUTOFF_MINUTE;
+  const canOrder = editable || (openHours && !cutOff);
   const flashSales = game.flashSales;
   const flashSaleFull = flashSales.length >= MAX_FLASH_SALES;
   const lines = Object.entries(qty)
@@ -44,6 +48,8 @@ function useStockOrder(controller: Controller) {
   return {
     editable,
     openHours,
+    canOrder,
+    cutOff,
     flashSales,
     flashSaleFull,
     lines,
@@ -71,15 +77,29 @@ function useStockOrder(controller: Controller) {
     },
     pendingQty: (productId: string) =>
       game.pendingOrders.flatMap((o) => o.lines).filter((l) => l.productId === productId).reduce((s, l) => s + l.qty, 0),
-    submitLabel: isOpeningDelivery(game.day) ? '下單（開幕進貨，立即送達）' : '下單（明天開店前送達）',
+    submitLabel: editable && isOpeningDelivery(game.day) ? '下單（開幕進貨，立即送達）' : '下單（明天開店前送達）',
   };
 }
 
 function OpenHoursNote({ order }: { order: StockOrder }) {
   return (
-    <p className="side-panel-note" role="note">
-      營業中只能使用限時特價與緊急叫貨；售價與一般進貨單請在準備階段調整。限時特價持續 2 小時，同時最多{' '}
-      {MAX_FLASH_SALES} 個（{order.flashSales.length}/{MAX_FLASH_SALES}）。
+    <>
+      <p className="side-panel-note" role="note">
+        營業中售價請在準備階段調整。限時特價持續 2 小時，同時最多 {MAX_FLASH_SALES} 個（{order.flashSales.length}/
+        {MAX_FLASH_SALES}）。
+      </p>
+      <OrderCutoffNote order={order} />
+    </>
+  );
+}
+
+/** 營業中一般進貨單的截單提示 */
+function OrderCutoffNote({ order }: { order: StockOrder }) {
+  return (
+    <p className={order.cutOff ? 'side-panel-note order-cutoff passed' : 'side-panel-note order-cutoff'} role="status">
+      {order.cutOff
+        ? `一般進貨單今日已截單，可改用緊急叫貨（${formatTime(RUSH_LAST_ORDER_MINUTE)} 前）`
+        : `一般進貨單 ${formatTime(ORDER_CUTOFF_MINUTE)} 截單・明天開店前送達`}
     </p>
   );
 }
@@ -122,7 +142,7 @@ function OrderSummary({ order }: { order: StockOrder }) {
 
 function StockTable({ controller, onClose, order }: StockPanelProps & { order: StockOrder }) {
   const { game } = controller;
-  const { editable, openHours } = order;
+  const { editable, openHours, canOrder } = order;
 
   return (
     <div className={openHours ? 'side-panel open-hours' : 'side-panel'}>
@@ -177,7 +197,7 @@ function StockTable({ controller, onClose, order }: StockPanelProps & { order: S
                     value={order.qty(p.id)}
                     step={p.minOrder}
                     placeholder={`≥${p.minOrder}`}
-                    disabled={!unlocked || !editable}
+                    disabled={!unlocked || !canOrder}
                     onChange={(v) => order.setQty(p, v)}
                   />
                 </td>
@@ -194,7 +214,7 @@ function StockTable({ controller, onClose, order }: StockPanelProps & { order: S
       {openHours && <RushOrderSection controller={controller} />}
       <footer>
         <OrderSummary order={order} />
-        <button className="primary" disabled={!editable || order.lines.length === 0} onClick={order.submit}>
+        <button className="primary" disabled={!canOrder || order.lines.length === 0} onClick={order.submit}>
           {order.submitLabel}
         </button>
       </footer>
@@ -207,7 +227,7 @@ type Tab = 'all' | CategoryId;
 /** 手機版：全螢幕頁面，每個商品一張卡片，點開調整售價與訂購量 */
 function StockPage({ controller, onClose, order }: StockPanelProps & { order: StockOrder }) {
   const { game } = controller;
-  const { editable, openHours } = order;
+  const { editable, openHours, canOrder } = order;
   const [tab, setTab] = useState<Tab>('all');
   const [expanded, setExpanded] = useState<string | null>(null);
 
@@ -230,7 +250,7 @@ function StockPage({ controller, onClose, order }: StockPanelProps & { order: St
         </div>
       }
       footer={
-        editable ? (
+        canOrder ? (
           <>
             <OrderSummary order={order} />
             <button className="primary" disabled={order.lines.length === 0} onClick={order.submit}>
@@ -290,7 +310,7 @@ function StockPage({ controller, onClose, order }: StockPanelProps & { order: St
                       onChange={(v) => order.setPrice(p.id, v)}
                     />
                   </label>
-                  {editable && (
+                  {canOrder && (
                     <label>
                       <span>訂購量</span>
                       <Stepper

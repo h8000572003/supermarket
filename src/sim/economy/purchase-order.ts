@@ -15,6 +15,9 @@ export interface PurchaseOrder {
   readonly total: number;
 }
 
+/** 這個時刻（含）之後當天不能再下進貨單（截單時間，ADR 0005） */
+export const ORDER_CUTOFF_MINUTE = 18 * 60;
+
 /** 每張進貨單的運費 */
 export const SHIPPING_FEE = 300;
 

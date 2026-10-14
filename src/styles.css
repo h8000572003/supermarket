@@ -327,6 +327,17 @@ select {
   opacity: 0.8;
 }
 
+/* 營業中一般進貨單的截單提示 */
+.side-panel-note.order-cutoff {
+  color: var(--accent);
+  opacity: 1;
+}
+
+.side-panel-note.order-cutoff.passed {
+  color: inherit;
+  opacity: 0.8;
+}
+
 /* 營業中多一欄限時特價 */
 .side-panel.open-hours {
   width: min(800px, calc(100vw - 24px));
