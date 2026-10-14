@@ -49,6 +49,8 @@ import type { DailyReport, WasteLine } from './report/daily-report';
 import { Rng } from './rng';
 import { SNAPSHOT_VERSION } from './snapshot';
 import type { GameSnapshot } from './snapshot';
+import { advanceWeather, dayConditions, initialWeather, weatherSeed } from './weather/weather';
+import type { DayConditions, WeatherState } from './weather/weather';
 import { totalQty } from './inventory/batch';
 import type { Batch } from './inventory/batch';
 import { customerAccessTiles, rotateClockwise, slotAccessTile, staffAccessTiles } from './store/geometry';
@@ -274,12 +276,17 @@ export class Game {
   private categoryDemand: Partial<Record<CategoryId, number>> = {};
   /** 前一個營業日發生過的狀況種類（隔天不重複） */
   private previousIncidentKinds: readonly IncidentKind[] = [];
+  /** 天氣專用亂數流（與 rng 分開，天氣不影響顧客與狀況的亂數序列） */
+  private weatherRng: Rng;
+  private weather: WeatherState;
 
   private readonly customerWorld: CustomerWorld;
   private readonly customerArrivals: boolean;
 
   constructor(options: GameOptions) {
     this.rng = Rng.fromSeed(options.seed);
+    this.weatherRng = Rng.fromSeed(weatherSeed(options.seed));
+    this.weather = initialWeather(this.weatherRng);
     this.customerArrivals = options.customerArrivals ?? true;
     this._reputation = options.startingReputation ?? STARTING_REPUTATION;
     this._funds = options.startingFunds ?? STARTING_FUNDS;
@@ -310,6 +317,7 @@ export class Game {
       rngState: this.rng.state,
       speed: this._speed,
       previousIncidentKinds: this.previousIncidentKinds,
+      weather: { ...this.weather, rngState: this.weatherRng.state },
       ledger: {
         fundsAtStart: this.ledger.fundsAtStart,
         purchases: this.ledger.purchases,
@@ -341,6 +349,8 @@ export class Game {
     game._pendingOrders = [...s.pendingOrders];
     game._speed = s.speed;
     game.previousIncidentKinds = [...s.previousIncidentKinds];
+    game.weatherRng = Rng.fromState(s.weather.rngState);
+    game.weather = { today: s.weather.today, tomorrow: s.weather.tomorrow, tomorrowStreak: s.weather.tomorrowStreak };
     game.ledger = new DayLedger(s.day, s.ledger.fundsAtStart);
     game.ledger.purchases = s.ledger.purchases;
     game.ledger.fixtures = s.ledger.fixtures;
@@ -359,6 +369,16 @@ export class Game {
   /** 目前是第幾個營業日（從 1 開始） */
   get day(): number {
     return this._day;
+  }
+
+  /** 今天（目前營業日）的天氣與星期 */
+  get today(): DayConditions {
+    return dayConditions(this._day, this.weather.today);
+  }
+
+  /** 明日預報：下一個營業日的天氣與星期（一定準確） */
+  get forecast(): DayConditions {
+    return dayConditions(this._day + 1, this.weather.tomorrow);
   }
 
   /** 營業時段已進行的步數 */
@@ -1203,6 +1223,7 @@ export class Game {
     if (this._phase !== 'report') return fail('not-report-phase');
     this.previousIncidentKinds = this.ledger.incidents.map((i) => i.kind);
     this._day++;
+    this.weather = advanceWeather(this.weatherRng, this.weather);
     this._phase = 'prep';
     this._step = 0;
     this.ledger = new DayLedger(this._day, this._funds);

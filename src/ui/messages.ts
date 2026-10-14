@@ -1,4 +1,6 @@
 import type { CommandError } from '../sim/game';
+import { WEATHER_NAMES, WEEKDAY_NAMES } from '../sim/weather/weather';
+import type { DayConditions, Weather } from '../sim/weather/weather';
 
 export const ERROR_MESSAGES: Record<CommandError, string> = {
   'out-of-bounds': '超出店面範圍',
@@ -55,3 +57,18 @@ export const formatTime = (minuteOfDay: number) => {
   const m = Math.floor(minuteOfDay);
   return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 };
+
+/** 天氣圖示；加上 U+FE0E 強制以文字字形呈現，四種圖示風格一致 */
+export const WEATHER_ICONS: Record<Weather, string> = {
+  sunny: '\u2600\uFE0E',
+  rainy: '\u2602\uFE0E',
+  hot: '\u2668\uFE0E',
+  cold: '\u2744\uFE0E',
+};
+
+/** 狀態列用的短字：「☀ 週一」 */
+export const formatConditions = (c: DayConditions) => `${WEATHER_ICONS[c.weather]} ${WEEKDAY_NAMES[c.weekday]}`;
+
+/** 給螢幕閱讀器與提示文字的完整說法：「晴天，週一」 */
+export const describeConditions = (c: DayConditions) =>
+  `${WEATHER_NAMES[c.weather]}天，${WEEKDAY_NAMES[c.weekday]}${c.weekend ? '（週末）' : ''}`;

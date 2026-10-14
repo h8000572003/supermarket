@@ -7,7 +7,30 @@ import type { Controller } from './controller';
 import { useGameVersion } from './hooks';
 import { useNarrow } from './media';
 import { startNewGame } from './new-game';
-import { formatMoney, formatTime } from './messages';
+import { describeConditions, formatConditions, formatMoney, formatTime } from './messages';
+import type { DayConditions } from '../sim/weather/weather';
+
+/** 今天的天氣與星期，例如「☀ 週一」 */
+function Conditions({ conditions }: { conditions: DayConditions }) {
+  return (
+    <span className="conditions" title={`今天：${describeConditions(conditions)}`} aria-label={`今天${describeConditions(conditions)}`}>
+      {formatConditions(conditions)}
+    </span>
+  );
+}
+
+/** 準備階段的明日預報，例如「明日 ☂ 週二」 */
+function Forecast({ conditions }: { conditions: DayConditions }) {
+  return (
+    <span
+      className={`forecast${conditions.weekend ? ' weekend' : ''}`}
+      title={`明日預報：${describeConditions(conditions)}`}
+      aria-label={`明日預報：${describeConditions(conditions)}`}
+    >
+      明日 {formatConditions(conditions)}
+    </span>
+  );
+}
 
 const PHASE_LABEL: Record<Phase, string> = {
   prep: '準備階段',
@@ -75,8 +98,13 @@ function CompactHud({ controller, sounds, onOpenMilestones }: HudProps) {
         aria-expanded={expanded}
         aria-label="店舖狀態，點一下展開詳細資訊"
       >
-        <span>第 {game.day} 天</span>
-        <span className="clock">{formatTime(game.minuteOfDay)}</span>
+        {/* 天數與今天的天氣、星期疊成兩行，讓營業中的時鐘與資金仍放得下 */}
+        <span className="hud-date">
+          <span>第 {game.day} 天</span>
+          <Conditions conditions={game.today} />
+        </span>
+        {/* 準備階段的時鐘固定在開店時刻，改在狀態列下方顯示明日預報 */}
+        {game.phase !== 'prep' && <span className="clock">{formatTime(game.minuteOfDay)}</span>}
         <strong className={game.funds < 0 ? 'negative' : ''}>{formatMoney(game.funds)}</strong>
       </button>
       <span className="hud-primary">
@@ -109,9 +137,15 @@ function CompactHud({ controller, sounds, onOpenMilestones }: HudProps) {
           ⋯
         </button>
       </span>
+      {game.phase === 'prep' && !expanded && !menuOpen && (
+        <div className="hud-forecast">
+          <Forecast conditions={game.forecast} />
+        </div>
+      )}
       {expanded && (
         <div className="hud-details" role="status">
           <span>{PHASE_LABEL[game.phase]}</span>
+          {game.phase === 'prep' && <Forecast conditions={game.forecast} />}
           <span>口碑 {Math.round(game.reputation)}</span>
           {game.phase === 'open' && (
             <>
@@ -165,6 +199,7 @@ function WideHud({ controller, sounds, onOpenStock, onOpenMilestones }: HudProps
         {game.phase === 'prep' && (
           <button onClick={confirmNewGame}>新遊戲</button>
         )}
+        {game.phase === 'prep' && <Forecast conditions={game.forecast} />}
         {game.phase === 'prep' && (
           <button className="primary" onClick={openStore}>
             開店
@@ -181,7 +216,7 @@ function WideHud({ controller, sounds, onOpenStock, onOpenMilestones }: HudProps
         )}
       </span>
       <span className="hud-meta">
-        第 {game.day} 天 · {PHASE_LABEL[game.phase]} · <span className="clock">{formatTime(game.minuteOfDay)}</span>
+        第 {game.day} 天 <Conditions conditions={game.today} /> · {PHASE_LABEL[game.phase]} · <span className="clock">{formatTime(game.minuteOfDay)}</span>
         {game.phase === 'open' && (
           <>
             {' '}

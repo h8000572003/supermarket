@@ -100,6 +100,25 @@ body,
   color: var(--accent);
 }
 
+/* 今天的天氣與星期、明日預報 */
+.conditions,
+.forecast {
+  white-space: nowrap;
+}
+
+.forecast {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.forecast.weekend {
+  border-color: var(--primary-border);
+  background: var(--primary-soft);
+}
+
 .toolbar-area {
   position: absolute;
   left: var(--safe-left);
@@ -967,7 +986,34 @@ button {
 }
 
 .hud-status strong {
+  flex-shrink: 0;
   color: var(--accent);
+}
+
+.hud-date {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  font-size: var(--font-sm);
+  line-height: 1.25;
+}
+
+/* 手機版準備階段：明日預報掛在狀態列左下方 */
+.hud-forecast {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  pointer-events: none;
+}
+
+.hud-forecast .forecast {
+  padding: 4px 10px;
+  background: var(--surface);
+  font-size: var(--font);
+}
+
+.hud-forecast .forecast.weekend {
+  background: var(--active-bg);
 }
 
 .hud-primary {

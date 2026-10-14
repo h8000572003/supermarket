@@ -76,6 +76,31 @@ describe('存檔與讀檔', () => {
     for (const kind of today) expect(yesterday).not.toContain(kind);
   });
 
+  it('存讀檔後今天與明天的天氣、星期相等，之後的天氣序列也與沒中斷時相同', () => {
+    const storage = new MemoryStorage();
+    const game = establishedGame();
+    expect(game.snapshot()?.weather).toMatchObject({ today: game.today.weather, tomorrow: game.forecast.weather });
+    saveGame(game, storage);
+    const loaded = loadGame(storage)!;
+    expect(loaded.today).toEqual(game.today);
+    expect(loaded.forecast).toEqual(game.forecast);
+    for (let i = 0; i < 6; i++) {
+      playThroughDay(game);
+      playThroughDay(loaded);
+      expect(loaded.today).toEqual(game.today);
+      expect(loaded.forecast).toEqual(game.forecast);
+    }
+  });
+
+  it('快照版本號遞增為 4；前一版（沒有天氣欄位）的存檔直接捨棄', () => {
+    expect(SNAPSHOT_VERSION).toBe(4);
+    const storage = new MemoryStorage();
+    const old = { ...establishedGame().snapshot()!, version: 3 } as Record<string, unknown>;
+    delete old.weather;
+    storage.setItem(SAVE_KEY, JSON.stringify(old));
+    expect(loadGame(storage)).toBeNull();
+  });
+
   it('舊版本（沒有狀況欄位）的存檔直接捨棄', () => {
     const storage = new MemoryStorage();
     const old = { ...establishedGame().snapshot()!, version: 2 } as Record<string, unknown>;

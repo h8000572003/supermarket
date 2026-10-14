@@ -5,9 +5,10 @@ import type { IncidentKind } from './incidents/incidents';
 import type { InventorySnapshot } from './inventory/inventory';
 import type { WasteLine } from './report/daily-report';
 import type { Fixture } from './store/store-layout';
+import type { Weather } from './weather/weather';
 
 /** 快照格式版本；結構改變時遞增，舊版存檔即不再讀取 */
-export const SNAPSHOT_VERSION = 3;
+export const SNAPSHOT_VERSION = 4;
 
 /**
  * 準備階段的完整遊戲狀態（見 ADR 0002）。
@@ -34,6 +35,13 @@ export interface GameSnapshot {
   readonly speed: Speed;
   /** 前一個營業日發生過的狀況種類，讓讀檔後仍維持「不連續兩天同種類」 */
   readonly previousIncidentKinds: readonly IncidentKind[];
+  /** 今天與明天的天氣（星期由天數算出）；rngState 是天氣專用亂數流的狀態 */
+  readonly weather: {
+    readonly today: Weather;
+    readonly tomorrow: Weather;
+    readonly tomorrowStreak: number;
+    readonly rngState: number;
+  };
   /** 當天準備階段已記下的帳 */
   readonly ledger: {
     readonly fundsAtStart: number;
