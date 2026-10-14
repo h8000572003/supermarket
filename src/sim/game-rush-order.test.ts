@@ -187,7 +187,7 @@ describe('緊急叫貨', () => {
     expect(report.rushShipping).toBe(2 * SHIPPING_FEE);
     expect(report.purchases).toBe(6 * cost('chips') + SHIPPING_FEE + 12 * cost('cola'));
     expect(report.fundsAtEnd - report.fundsAtStart).toBe(
-      report.revenue - report.purchases - report.rushShipping - report.fixtures - report.rent - report.wages - report.incidentCosts,
+      report.revenue + report.goalFunds - report.purchases - report.rushShipping - report.fixtures - report.rent - report.wages - report.incidentCosts,
     );
   });
 

@@ -131,7 +131,7 @@ describe('結算對帳', () => {
     runOpenHours(game);
     const r = game.lastReport!;
     expect(r.fixtures).toBe(4_000 + 3_000 + 2_000 - 1_000);
-    expect(r.fundsAtEnd - r.fundsAtStart).toBe(r.revenue - r.purchases - r.fixtures - r.rent - r.wages);
+    expect(r.fundsAtEnd - r.fundsAtStart).toBe(r.revenue + r.goalFunds - r.purchases - r.fixtures - r.rent - r.wages);
   });
 });
 

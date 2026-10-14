@@ -1,6 +1,6 @@
 import { FIXTURES, SELL_REFUND_RATE } from './catalog/fixtures';
 import type { FixtureKind } from './catalog/fixtures';
-import { CATEGORIES, PRODUCTS, STARTING_CATEGORIES, productById } from './catalog/products';
+import { CATEGORIES, CATEGORY_IDS, PRODUCTS, STARTING_CATEGORIES, productById } from './catalog/products';
 import type { CategoryId } from './catalog/products';
 import { Checkout, nearestAvailable } from './agents/checkout';
 import type { RegisterSpot } from './agents/checkout';
@@ -24,6 +24,8 @@ import {
   freeRushTerms,
 } from './economy/rush-order';
 import type { RushOrder, RushOrderTerms } from './economy/rush-order';
+import { FIRST_GOAL_DAY, GOAL_HISTORY_DAYS, dailyGoalSeed, goalStatus, pickDailyGoal } from './goals/daily-goal';
+import type { DailyGoalDef, DailyGoalStatus, GoalDayStats, GoalMeasures } from './goals/daily-goal';
 import { canAfford, incidentDefinition, optionGoods, scheduleIncidents } from './incidents/incidents';
 import type {
   IncidentContext,
@@ -279,6 +281,12 @@ export class Game {
   /** 天氣專用亂數流（與 rng 分開，天氣不影響顧客與狀況的亂數序列） */
   private weatherRng: Rng;
   private weather: WeatherState;
+  /** 每日目標專用亂數流（與 rng 分開，挑目標不影響顧客與狀況的亂數序列） */
+  private goalRng: Rng;
+  /** 今天的每日目標；第 1 天為 null */
+  private todayGoal: DailyGoalDef | null = null;
+  /** 最近幾天的成績（舊到新），供設定每日目標的數字 */
+  private goalHistory: GoalDayStats[] = [];
 
   private readonly customerWorld: CustomerWorld;
   private readonly customerArrivals: boolean;
@@ -287,6 +295,7 @@ export class Game {
     this.rng = Rng.fromSeed(options.seed);
     this.weatherRng = Rng.fromSeed(weatherSeed(options.seed));
     this.weather = initialWeather(this.weatherRng);
+    this.goalRng = Rng.fromSeed(dailyGoalSeed(options.seed));
     this.customerArrivals = options.customerArrivals ?? true;
     this._reputation = options.startingReputation ?? STARTING_REPUTATION;
     this._funds = options.startingFunds ?? STARTING_FUNDS;
@@ -318,6 +327,7 @@ export class Game {
       speed: this._speed,
       previousIncidentKinds: this.previousIncidentKinds,
       weather: { ...this.weather, rngState: this.weatherRng.state },
+      dailyGoal: { today: this.todayGoal, history: this.goalHistory, rngState: this.goalRng.state },
       ledger: {
         fundsAtStart: this.ledger.fundsAtStart,
         purchases: this.ledger.purchases,
@@ -351,6 +361,9 @@ export class Game {
     game.previousIncidentKinds = [...s.previousIncidentKinds];
     game.weatherRng = Rng.fromState(s.weather.rngState);
     game.weather = { today: s.weather.today, tomorrow: s.weather.tomorrow, tomorrowStreak: s.weather.tomorrowStreak };
+    game.goalRng = Rng.fromState(s.dailyGoal.rngState);
+    game.todayGoal = s.dailyGoal.today;
+    game.goalHistory = [...s.dailyGoal.history];
     game.ledger = new DayLedger(s.day, s.ledger.fundsAtStart);
     game.ledger.purchases = s.ledger.purchases;
     game.ledger.fixtures = s.ledger.fixtures;
@@ -379,6 +392,15 @@ export class Game {
   /** 明日預報：下一個營業日的天氣與星期（一定準確） */
   get forecast(): DayConditions {
     return dayConditions(this._day + 1, this.weather.tomorrow);
+  }
+
+  /**
+   * 今天的每日目標與進度；第 1 天為 null。
+   * 營業中隨銷售更新；打烊後為判定時的結果
+   */
+  get dailyGoal(): DailyGoalStatus | null {
+    if (!this.todayGoal) return null;
+    return this.ledger.dailyGoal ?? goalStatus(this.todayGoal, this.goalMeasures());
   }
 
   /** 營業時段已進行的步數 */
@@ -1181,10 +1203,15 @@ export class Game {
     this.arrivalSurge = null;
     this.categoryDemand = {};
 
+    this.judgeDailyGoal();
+    this.recordGoalHistory();
+
     const reputationBefore = this._reputation;
-    // 狀況造成的口碑變化與當天的平滑更新一起套用
+    // 狀況與每日目標造成的口碑變化與當天的平滑更新一起套用
     this._reputation = clampReputation(
-      nextReputation(this._reputation, this.ledger.avgSatisfaction) + this.ledger.incidentReputation,
+      nextReputation(this._reputation, this.ledger.avgSatisfaction) +
+        this.ledger.incidentReputation +
+        this.ledger.goalReputation,
     );
     this.totalRevenue += this.ledger.revenue;
     this.bestServed = Math.max(this.bestServed, this.ledger.served);
@@ -1203,6 +1230,91 @@ export class Game {
     this.emit({ type: 'day-ended', bankrupt });
     for (const id of milestonesReached) this.emit({ type: 'milestone', id });
     this.changed();
+  }
+
+  /** 打烊時判定每日目標：達成時發放資金或口碑（口碑於稍後與當天的平滑更新一起套用）；沒達成不變 */
+  private judgeDailyGoal(): void {
+    if (!this.todayGoal) return;
+    const status = goalStatus(this.todayGoal, this.goalMeasures());
+    const granted = status.met ? status.reward : null;
+    if (granted?.type === 'funds') {
+      this._funds += granted.amount;
+      this.ledger.goalFunds = granted.amount;
+    } else if (granted?.type === 'reputation') {
+      this.ledger.goalReputation += granted.delta;
+    }
+    this.ledger.dailyGoal = { ...status, granted };
+  }
+
+  /** 記下今天的成績，供之後設定每日目標的數字 */
+  private recordGoalHistory(): void {
+    const sales: Partial<Record<CategoryId, number>> = {};
+    for (const [productId, qty] of this.ledger.sales) {
+      const category = productById(productId)?.category;
+      if (category) sales[category] = (sales[category] ?? 0) + qty;
+    }
+    const today: GoalDayStats = { served: this.ledger.served, sales, stockoutEmpty: this.ledger.stockoutEmpty };
+    this.goalHistory = [...this.goalHistory, today].slice(-GOAL_HISTORY_DAYS);
+  }
+
+  /** 每日目標需要的今天數字 */
+  private goalMeasures(): GoalMeasures {
+    const ledger = this.ledger;
+    return {
+      categorySales: (category) => {
+        let n = 0;
+        for (const [productId, qty] of ledger.sales) if (productById(productId)?.category === category) n += qty;
+        return n;
+      },
+      served: ledger.served,
+      stockoutEmpty: ledger.stockoutEmpty,
+      expiringFresh: this.expiringAfterToday(),
+    };
+  }
+
+  /** 倉庫與架上、今天打烊後就會過期的商品件數 */
+  private expiringAfterToday(): number {
+    const inv = this.inventory.snapshot();
+    const batches = [...inv.backroom, ...inv.displays.flatMap((d) => d.slots.flatMap((s) => s.batches))];
+    return batches.filter((b) => isExpired(b, this._day + 1)).reduce((sum, b) => sum + b.qty, 0);
+  }
+
+  /** 各類別的現有庫存（倉庫與架上） */
+  private stockByCategory(): Partial<Record<CategoryId, number>> {
+    const inv = this.inventory.snapshot();
+    const stock: Partial<Record<CategoryId, number>> = {};
+    for (const b of [...inv.backroom, ...inv.displays.flatMap((d) => d.slots.flatMap((s) => s.batches))]) {
+      const category = productById(b.productId)?.category;
+      if (category) stock[category] = (stock[category] ?? 0) + b.qty;
+    }
+    return stock;
+  }
+
+  /** 已解鎖、且有格位指定該類別商品的類別 */
+  private displayedCategories(): CategoryId[] {
+    const shown = new Set<CategoryId>();
+    for (const f of this.layout.list()) {
+      for (const slot of this.inventory.slots(f.id)) {
+        const category = slot.productId ? productById(slot.productId)?.category : undefined;
+        if (category && this.unlocked.has(category)) shown.add(category);
+      }
+    }
+    // 固定順序，讓挑選結果不受設施擺放順序影響
+    return CATEGORY_IDS.filter((c) => shown.has(c));
+  }
+
+  /** 進入準備階段時挑今天的每日目標（第 1 天沒有）；只用每日目標專用的亂數流 */
+  private chooseDailyGoal(): void {
+    this.todayGoal =
+      this._day < FIRST_GOAL_DAY
+        ? null
+        : pickDailyGoal(this.goalRng, {
+            conditions: this.today,
+            categories: this.displayedCategories(),
+            history: this.goalHistory,
+            expiringFresh: this.expiringAfterToday(),
+            stock: this.stockByCategory(),
+          });
   }
 
   /** 檢查新達成的里程碑並發放解鎖；回傳新達成的 id */
@@ -1230,6 +1342,7 @@ export class Game {
     for (const order of this._pendingOrders) this.deliver(order);
     this._pendingOrders = [];
     this.ledger.waste = summarizeWaste(this.inventory.removeBatches((b) => isExpired(b, this._day)));
+    this.chooseDailyGoal();
     this.changed();
     return ok(undefined);
   }

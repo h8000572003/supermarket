@@ -382,7 +382,7 @@ describe('每日結算與重現性', () => {
       const r = game.lastReport!;
       expect(r.incidentCosts).toBe(r.incidents.reduce((s, i) => s + i.cost, 0));
       expect(r.fundsAtEnd - r.fundsAtStart).toBe(
-        r.revenue - r.purchases - r.rushShipping - r.fixtures - r.rent - r.wages - r.incidentCosts,
+        r.revenue + r.goalFunds - r.purchases - r.rushShipping - r.fixtures - r.rent - r.wages - r.incidentCosts,
       );
       game.startNextDay();
     }

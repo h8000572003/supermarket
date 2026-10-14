@@ -1,4 +1,5 @@
 import type { CategoryId } from './catalog/products';
+import type { DailyGoalDef, GoalDayStats } from './goals/daily-goal';
 import type { Speed } from './clock/clock';
 import type { PurchaseOrder } from './economy/purchase-order';
 import type { IncidentKind } from './incidents/incidents';
@@ -8,7 +9,7 @@ import type { Fixture } from './store/store-layout';
 import type { Weather } from './weather/weather';
 
 /** 快照格式版本；結構改變時遞增，舊版存檔即不再讀取 */
-export const SNAPSHOT_VERSION = 4;
+export const SNAPSHOT_VERSION = 5;
 
 /**
  * 準備階段的完整遊戲狀態（見 ADR 0002）。
@@ -40,6 +41,12 @@ export interface GameSnapshot {
     readonly today: Weather;
     readonly tomorrow: Weather;
     readonly tomorrowStreak: number;
+    readonly rngState: number;
+  };
+  /** 今天的每日目標（第 1 天為 null）、設定目標數字用的最近成績、每日目標專用亂數流的狀態 */
+  readonly dailyGoal: {
+    readonly today: DailyGoalDef | null;
+    readonly history: readonly GoalDayStats[];
     readonly rngState: number;
   };
   /** 當天準備階段已記下的帳 */

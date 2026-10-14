@@ -266,7 +266,7 @@ describe('每日結算', () => {
       for (const i of r.incidents) expect(i.option).toBe(0);
       expect(r.incidentCosts).toBe(r.incidents.reduce((s, i) => s + i.cost, 0));
       expect(r.fundsAtEnd - r.fundsAtStart).toBe(
-        r.revenue - r.purchases - r.fixtures - r.rent - r.wages - r.incidentCosts,
+        r.revenue + r.goalFunds - r.purchases - r.fixtures - r.rent - r.wages - r.incidentCosts,
       );
       game.startNextDay();
     }

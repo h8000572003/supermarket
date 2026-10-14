@@ -6,7 +6,7 @@ import type { DailyReport } from '../sim/report/daily-report';
 import { FullScreenPage } from './FullScreenPage';
 import { useGameVersion } from './hooks';
 import { useNarrow } from './media';
-import { formatMoney, formatTime } from './messages';
+import { formatGoalCount, formatGoalReward, formatMoney, formatTime } from './messages';
 import { startNewGame } from './new-game';
 
 /** 每日結算畫面；破產時改為結束畫面 */
@@ -54,11 +54,27 @@ export function DailyReportPanel({ game }: { game: Game }) {
         );
       })}
 
+      {report.dailyGoal && (
+        <p className={`report-goal${report.dailyGoal.granted ? ' met' : ''}`}>
+          <strong>{report.dailyGoal.granted ? '每日目標達成' : '每日目標未達成'}</strong>：{report.dailyGoal.description}（
+          {formatGoalCount(report.dailyGoal)}）
+          {report.dailyGoal.granted
+            ? `，獲得${report.dailyGoal.granted.type === 'funds' ? '資金 ' : ''}${formatGoalReward(report.dailyGoal.granted)}！`
+            : '。沒達成不扣分。'}
+        </p>
+      )}
+
       <section>
         <h3>收支</h3>
         <dl className="report">
           <dt>營收</dt>
           <dd className="positive">{formatMoney(report.revenue)}</dd>
+          {report.goalFunds > 0 && (
+            <>
+              <dt>每日目標獎勵</dt>
+              <dd className="positive">+{formatMoney(report.goalFunds)}</dd>
+            </>
+          )}
           <dt>進貨支出</dt>
           <dd>{formatExpense(report.purchases)}</dd>
           <dt>緊急叫貨運費</dt>

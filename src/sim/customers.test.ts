@@ -67,7 +67,7 @@ describe('顧客與收銀', () => {
     expect(r.customers.entered).toBeGreaterThan(50);
     expect(r.customers.served).toBeGreaterThan(r.customers.entered * 0.7);
     expect(r.revenue).toBeGreaterThan(0);
-    expect(game.funds).toBe(funds + r.revenue - r.rent - r.wages - r.purchases - r.incidentCosts);
+    expect(game.funds).toBe(funds + r.revenue + r.goalFunds - r.rent - r.wages - r.purchases - r.incidentCosts);
   });
 
   it('每位進店顧客都有結果', () => {
@@ -171,7 +171,7 @@ describe('跨日', () => {
       const before = game.funds;
       playThroughDay(game);
       const r = game.lastReport!;
-      expect(game.funds).toBe(before + r.revenue - r.rent - r.wages - r.purchases - r.incidentCosts);
+      expect(game.funds).toBe(before + r.revenue + r.goalFunds - r.rent - r.wages - r.purchases - r.incidentCosts);
     }
   });
 });

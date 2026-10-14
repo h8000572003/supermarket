@@ -617,7 +617,8 @@ button {
 }
 
 .report-alert,
-.report-milestone {
+.report-milestone,
+.report-goal {
   margin: 0;
   padding: 8px 10px;
   border-radius: var(--radius);
@@ -629,6 +630,15 @@ button {
 }
 
 .report-milestone {
+  background: var(--primary-soft);
+}
+
+/* 每日目標結果：達成時與里程碑同色，沒達成時用淡底 */
+.report-goal {
+  background: var(--bg);
+}
+
+.report-goal.met {
   background: var(--primary-soft);
 }
 
@@ -1003,7 +1013,21 @@ button {
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
   pointer-events: none;
+}
+
+/* 手機版的每日目標標籤：說明太長時換行，不超出螢幕 */
+.hud-forecast .goal-chip {
+  flex-wrap: wrap;
+  max-width: 100%;
+  padding: 4px 10px;
+  white-space: normal;
+  font-size: var(--font);
 }
 
 .hud-forecast .forecast {
@@ -1481,4 +1505,72 @@ button {
 
 .incident-sheet .incident-options button {
   min-height: 56px;
+}
+
+/* 每日目標：狀態列的小標籤（準備階段完整、營業中精簡），達成時改成成功色 */
+.goal-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+button.goal-chip {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.goal-chip.compact {
+  padding: 0 6px;
+}
+
+.goal-chip.met {
+  border-color: var(--success);
+}
+
+.goal-chip-count {
+  opacity: 0.8;
+}
+
+.goal-chip-reward {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* 「目標」面板：每日目標與里程碑分區 */
+.goals-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.goal-section h3 {
+  margin: 0;
+  padding: 8px 14px 6px;
+  font-size: var(--font-sm);
+  opacity: 0.7;
+}
+
+.daily-goal {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 14px 12px;
+  font-size: var(--font);
+}
+
+.goal-section > p {
+  margin: 0;
+  padding: 4px 14px 12px;
+}
+
+.daily-goal.done .bar > span {
+  background: var(--success);
 }

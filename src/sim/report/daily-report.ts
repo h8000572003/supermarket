@@ -1,4 +1,5 @@
 import type { CategoryId } from '../catalog/products';
+import type { DailyGoalResult } from '../goals/daily-goal';
 import type { IncidentRecord } from '../incidents/incidents';
 
 /** 單一商品的報廢 */
@@ -61,6 +62,10 @@ export interface DailyReport {
   readonly incidents: readonly IncidentRecord[];
   /** 狀況支出：選項費用合計 */
   readonly incidentCosts: number;
+  /** 今天的每日目標與判定結果；沒有每日目標（第 1 天）時為 null */
+  readonly dailyGoal: DailyGoalResult | null;
+  /** 每日目標發放的資金獎勵（沒有時為 0）；口碑獎勵已併入 progress 的口碑變化 */
+  readonly goalFunds: number;
   readonly progress: DayProgress;
 }
 
@@ -73,6 +78,8 @@ export class DayLedger {
   served = 0;
   leftEmpty = 0;
   abandoned = 0;
+  /** 因缺貨空手離開（空手離開且曾遇到缺貨）的人數 */
+  stockoutEmpty = 0;
   private satisfactionSum = 0;
   private satisfactionCount = 0;
   purchases = 0;
@@ -87,6 +94,12 @@ export class DayLedger {
   incidentCosts = 0;
   /** 狀況造成、於打烊時套用的口碑變化 */
   incidentReputation = 0;
+  /** 每日目標的判定結果（打烊時寫入） */
+  dailyGoal: DailyGoalResult | null = null;
+  /** 每日目標發放的資金獎勵 */
+  goalFunds = 0;
+  /** 每日目標造成、於打烊時套用的口碑變化 */
+  goalReputation = 0;
 
   constructor(
     readonly day: number,
@@ -105,7 +118,10 @@ export class DayLedger {
   ): void {
     for (const c of stockoutCategories) this.stockouts.set(c, (this.stockouts.get(c) ?? 0) + 1);
     if (outcome === 'served') this.served++;
-    else if (outcome === 'left-empty') this.leftEmpty++;
+    else if (outcome === 'left-empty') {
+      this.leftEmpty++;
+      if (stockoutCategories.length > 0) this.stockoutEmpty++;
+    }
     else this.abandoned++;
     this.satisfactionSum += satisfaction;
     this.satisfactionCount++;
@@ -145,6 +161,8 @@ export class DayLedger {
       flashSaleCategories: [...this.flashSaleCategories],
       incidents: [...this.incidents],
       incidentCosts: this.incidentCosts,
+      dailyGoal: this.dailyGoal,
+      goalFunds: this.goalFunds,
     };
   }
 }

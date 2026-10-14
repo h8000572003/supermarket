@@ -7,8 +7,17 @@ import type { Controller } from './controller';
 import { useGameVersion } from './hooks';
 import { useNarrow } from './media';
 import { startNewGame } from './new-game';
-import { describeConditions, formatConditions, formatMoney, formatTime } from './messages';
+import {
+  describeConditions,
+  formatConditions,
+  formatGoalCount,
+  formatGoalReward,
+  formatGoalShort,
+  formatMoney,
+  formatTime,
+} from './messages';
 import type { DayConditions } from '../sim/weather/weather';
+import type { DailyGoalStatus } from '../sim/goals/daily-goal';
 
 /** 今天的天氣與星期，例如「☀ 週一」 */
 function Conditions({ conditions }: { conditions: DayConditions }) {
@@ -29,6 +38,38 @@ function Forecast({ conditions }: { conditions: DayConditions }) {
     >
       明日 {formatConditions(conditions)}
     </span>
+  );
+}
+
+/**
+ * 今天的每日目標：準備階段顯示完整說明與獎勵，營業中只顯示短字與進度（例如「🎯 飲料 12/40」）。
+ * onOpen 時點一下打開「目標」面板
+ */
+function GoalChip({ goal, compact, onOpen }: { goal: DailyGoalStatus; compact: boolean; onOpen?: () => void }) {
+  const label = `今日目標：${goal.description}，目前 ${formatGoalCount(goal)}，獎勵 ${formatGoalReward(goal.reward)}`;
+  const content = compact ? (
+    <>
+      <span aria-hidden="true">🎯</span> {formatGoalShort(goal)}
+    </>
+  ) : (
+    <>
+      <span aria-hidden="true">🎯</span> {goal.description}
+      <span className="goal-chip-count">{formatGoalCount(goal)}</span>
+      <span className="goal-chip-reward">{formatGoalReward(goal.reward)}</span>
+    </>
+  );
+  const className = `goal-chip${goal.met ? ' met' : ''}${compact ? ' compact' : ''}`;
+  if (!onOpen) {
+    return (
+      <span className={className} title={label} aria-label={label}>
+        {content}
+      </span>
+    );
+  }
+  return (
+    <button className={className} title={label} aria-label={label} onClick={onOpen}>
+      {content}
+    </button>
   );
 }
 
@@ -137,9 +178,10 @@ function CompactHud({ controller, sounds, onOpenMilestones }: HudProps) {
           ⋯
         </button>
       </span>
-      {game.phase === 'prep' && !expanded && !menuOpen && (
+      {(game.phase === 'prep' || (game.phase === 'open' && game.dailyGoal)) && !expanded && !menuOpen && (
         <div className="hud-forecast">
-          <Forecast conditions={game.forecast} />
+          {game.phase === 'prep' && <Forecast conditions={game.forecast} />}
+          {game.dailyGoal && <GoalChip goal={game.dailyGoal} compact={game.phase !== 'prep'} />}
         </div>
       )}
       {expanded && (
@@ -147,6 +189,12 @@ function CompactHud({ controller, sounds, onOpenMilestones }: HudProps) {
           <span>{PHASE_LABEL[game.phase]}</span>
           {game.phase === 'prep' && <Forecast conditions={game.forecast} />}
           <span>口碑 {Math.round(game.reputation)}</span>
+          {game.dailyGoal && (
+            <span>
+              今日目標：{game.dailyGoal.description}（{formatGoalCount(game.dailyGoal)}，獎勵{' '}
+              {formatGoalReward(game.dailyGoal.reward)}）
+            </span>
+          )}
           {game.phase === 'open' && (
             <>
               <span>店內 {game.customerAgents.length} 人</span>
@@ -200,6 +248,9 @@ function WideHud({ controller, sounds, onOpenStock, onOpenMilestones }: HudProps
           <button onClick={confirmNewGame}>新遊戲</button>
         )}
         {game.phase === 'prep' && <Forecast conditions={game.forecast} />}
+        {game.phase === 'prep' && game.dailyGoal && (
+          <GoalChip goal={game.dailyGoal} compact={false} onOpen={onOpenMilestones} />
+        )}
         {game.phase === 'prep' && (
           <button className="primary" onClick={openStore}>
             開店
@@ -221,6 +272,12 @@ function WideHud({ controller, sounds, onOpenStock, onOpenMilestones }: HudProps
           <>
             {' '}
             · 店內 {game.customerAgents.length} 人 · 今日營收 {formatMoney(game.todayRevenue)}
+            {game.dailyGoal && (
+              <>
+                {' '}
+                · <GoalChip goal={game.dailyGoal} compact />
+              </>
+            )}
           </>
         )}{' '}
         · 口碑 {Math.round(game.reputation)} · 資金{' '}

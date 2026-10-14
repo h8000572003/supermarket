@@ -1,4 +1,6 @@
+import { CATEGORIES } from '../sim/catalog/products';
 import type { CommandError } from '../sim/game';
+import type { DailyGoalReward, DailyGoalStatus } from '../sim/goals/daily-goal';
 import { WEATHER_NAMES, WEEKDAY_NAMES } from '../sim/weather/weather';
 import type { DayConditions, Weather } from '../sim/weather/weather';
 
@@ -72,3 +74,41 @@ export const formatConditions = (c: DayConditions) => `${WEATHER_ICONS[c.weather
 /** 給螢幕閱讀器與提示文字的完整說法：「晴天，週一」 */
 export const describeConditions = (c: DayConditions) =>
   `${WEATHER_NAMES[c.weather]}天，${WEEKDAY_NAMES[c.weekday]}${c.weekend ? '（週末）' : ''}`;
+
+/** 每日目標的獎勵：「$800」「口碑 +2」 */
+export const formatGoalReward = (reward: DailyGoalReward) =>
+  reward.type === 'funds' ? formatMoney(reward.amount) : `口碑 +${reward.delta}`;
+
+/** 每日目標目前的數字，給進度條與狀態列用：「12 / 40」「0 人」「剩 5 件」 */
+export function formatGoalCount(goal: DailyGoalStatus): string {
+  switch (goal.kind) {
+    case 'sell-category':
+    case 'served':
+      return `${goal.current} / ${goal.target}`;
+    case 'no-stockout-empty':
+      return `缺貨空手 ${goal.current} 人`;
+    case 'zero-waste':
+      return goal.current === 0 ? '已全部賣完' : `還剩 ${goal.current} 件`;
+  }
+}
+
+/** 狀態列用的短字：「飲料 12/40」「結帳 30/120」「缺貨空手 0」「到期鮮食 5」 */
+export function formatGoalShort(goal: DailyGoalStatus): string {
+  switch (goal.kind) {
+    case 'sell-category':
+      return `${goal.category ? CATEGORIES[goal.category].name : '銷量'} ${goal.current}/${goal.target}`;
+    case 'served':
+      return `結帳 ${goal.current}/${goal.target}`;
+    case 'no-stockout-empty':
+      return `缺貨空手 ${goal.current}`;
+    case 'zero-waste':
+      return `到期鮮食 ${goal.current}`;
+  }
+}
+
+/** 每日目標的進度比例（0–1）；「至多」類目標目前守住為 1 */
+export function goalProgressRatio(goal: DailyGoalStatus): number {
+  if (goal.kind === 'sell-category' || goal.kind === 'served')
+    return Math.min(1, goal.current / Math.max(1, goal.target));
+  return goal.met ? 1 : 0;
+}

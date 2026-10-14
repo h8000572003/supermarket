@@ -92,8 +92,40 @@ describe('存檔與讀檔', () => {
     }
   });
 
-  it('快照版本號遞增為 4；前一版（沒有天氣欄位）的存檔直接捨棄', () => {
-    expect(SNAPSHOT_VERSION).toBe(4);
+  it('存讀檔後今天的每日目標相等，之後每天的每日目標也與沒中斷時相同', () => {
+    const storage = new MemoryStorage();
+    const game = establishedGame();
+    expect(game.dailyGoal).not.toBeNull();
+    expect(game.snapshot()?.dailyGoal.today).toMatchObject({ kind: game.dailyGoal!.kind, target: game.dailyGoal!.target });
+    saveGame(game, storage);
+    const loaded = loadGame(storage)!;
+    expect(loaded.dailyGoal).toEqual(game.dailyGoal);
+    for (let i = 0; i < 5; i++) {
+      runOpenHours(game);
+      runOpenHours(loaded);
+      expect(loaded.lastReport!.dailyGoal).toEqual(game.lastReport!.dailyGoal);
+      game.startNextDay();
+      loaded.startNextDay();
+      expect(loaded.dailyGoal).toEqual(game.dailyGoal);
+    }
+  });
+
+  it('第 1 天（沒有每日目標）存讀檔後仍沒有每日目標', () => {
+    const storage = new MemoryStorage();
+    saveGame(new Game({ seed: 4 }), storage);
+    expect(loadGame(storage)!.dailyGoal).toBeNull();
+  });
+
+  it('快照版本號遞增為 5；前一版（沒有每日目標欄位）的存檔直接捨棄', () => {
+    expect(SNAPSHOT_VERSION).toBe(5);
+    const storage = new MemoryStorage();
+    const old = { ...establishedGame().snapshot()!, version: 4 } as Record<string, unknown>;
+    delete old.dailyGoal;
+    storage.setItem(SAVE_KEY, JSON.stringify(old));
+    expect(loadGame(storage)).toBeNull();
+  });
+
+  it('更舊的版本（沒有天氣欄位）的存檔直接捨棄', () => {
     const storage = new MemoryStorage();
     const old = { ...establishedGame().snapshot()!, version: 3 } as Record<string, unknown>;
     delete old.weather;
