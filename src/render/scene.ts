@@ -11,7 +11,7 @@ import type { Controller } from '../ui/controller';
 import { PersonSprite, STAFF_LOOK, customerLook, loadAgentTextures } from './agent-sprites';
 import type { PersonLook } from './agent-sprites';
 import { createFixtureSprites, loadFixtureTextures } from './fixture-sprites';
-import { createStockItems, drawStockAlerts, loadProductTextures } from './stock-visuals';
+import { createStockItems, dispatchBadge, drawChangeoverMarkers, drawStockAlerts, loadProductTextures } from './stock-visuals';
 import type { FixtureStyle } from './fixture-sprites';
 import { TILE_HEIGHT, TILE_WIDTH, gridToScreen, screenToGrid, tileDiamond } from './iso';
 import type { ScreenPoint } from './iso';
@@ -38,7 +38,6 @@ const COLORS = {
 };
 
 /** 派工標記在設施上方浮起的高度 */
-const DISPATCH_BADGE_LIFT = TILE_HEIGHT * 2.6;
 
 const WALL_HEIGHT = TILE_HEIGHT * 2.5;
 const DOOR_HEIGHT = TILE_HEIGHT * 1.6;
@@ -104,8 +103,9 @@ export async function createStoreScene(host: HTMLElement, controller: Controller
   const overlay = new Graphics();
   const objects = new Container({ sortableChildren: true });
   const stockAlerts = new Graphics();
+  const changeoverBadges = new Graphics();
   const markers = new Graphics();
-  world.addChild(drawWalls(), drawFloor(), drawEntrance(), overlay, objects, stockAlerts, markers);
+  world.addChild(drawWalls(), drawFloor(), drawEntrance(), overlay, objects, stockAlerts, changeoverBadges, markers);
 
   const camera = new Camera(viewportOf(app), STORE_BOUNDS);
   const viewListeners = new Set<() => void>();
@@ -192,6 +192,7 @@ export async function createStoreScene(host: HTMLElement, controller: Controller
     drawObjects(objects, game, controller);
     drawOverlay(overlay, game, controller);
     drawStockAlerts(stockAlerts, game);
+    drawChangeoverMarkers(changeoverBadges, game);
     drawDispatchMarkers(markers, game);
   };
   redraw();
@@ -355,9 +356,9 @@ function drawDispatchMarkers(g: Graphics, game: Game): void {
     g.poly(tileDiamond(stand.x, stand.y)).fill({ color: COLORS.dispatch, alpha: 0.35 }).stroke({ width: 2, color: COLORS.dispatch });
     g.poly(tileDiamond(tile.x, tile.y)).stroke({ width: 3, color: COLORS.dispatch });
     const top = gridToScreen(tile.x + 0.5, tile.y + 0.5);
-    const y = top.y - DISPATCH_BADGE_LIFT;
+    const { y, r } = dispatchBadge(tile);
     g.moveTo(top.x, y + 16).lineTo(top.x, top.y - TILE_HEIGHT * 0.6).stroke({ width: 2, color: COLORS.dispatch, alpha: 0.8 });
-    g.circle(top.x, y, 13).fill(COLORS.dispatch).stroke({ width: 2, color: 0xffffff });
+    g.circle(top.x, y, r).fill(COLORS.dispatch).stroke({ width: 2, color: 0xffffff });
     g.roundRect(top.x - 2, y - 8, 4, 10, 2).fill(0xffffff);
     g.circle(top.x, y + 6, 2.2).fill(0xffffff);
   }

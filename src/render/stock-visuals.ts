@@ -173,6 +173,33 @@ const BADGE_LIFT: Record<'shelf' | 'fridge', number> = { shelf: TILE_HEIGHT * 2.
 
 const BADGE_COLOR: Record<'empty' | 'low', number> = { empty: 0xe5484d, low: 0xf5b52e };
 
+/** 畫面上的矩形範圍（含描邊） */
+export interface ScreenBox {
+  readonly left: number;
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
+}
+
+const CAPSULE_HEIGHT = 16;
+const CAPSULE_STEP = 12;
+
+/** 一格設施的頂面中心（提示從這裡往上浮） */
+const tileTop = (tile: GridPoint): ScreenPoint => gridToScreen(tile.x + 0.5, tile.y + 0.5);
+
+/** 問題膠囊的中心與寬度（每個格位一個點） */
+function capsuleGeometry(kind: 'shelf' | 'fridge', tile: GridPoint, dots: number) {
+  const top = tileTop(tile);
+  return { cx: top.x, cy: top.y - BADGE_LIFT[kind], w: dots * CAPSULE_STEP + 6 };
+}
+
+/** 問題膠囊佔的範圍，供錯開其他提示用 */
+export function stockAlertBox(kind: 'shelf' | 'fridge', tile: GridPoint, dots: number): ScreenBox {
+  const { cx, cy, w } = capsuleGeometry(kind, tile, dots);
+  const pad = 1;
+  return { left: cx - w / 2 - pad, right: cx + w / 2 + pad, top: cy - CAPSULE_HEIGHT / 2 - pad, bottom: cy + CAPSULE_HEIGHT / 2 + pad };
+}
+
 /**
  * 空或低於補貨門檻的格位：在那一格設施上方浮一個小膠囊，每個格位一個點（紅＝空、黃＝偏低、綠＝正常）。
  * 全部正常時不畫，避免畫面雜亂。
@@ -189,15 +216,91 @@ export function drawStockAlerts(g: Graphics, game: Game): void {
         .filter((s) => s?.productId)
         .map((s) => slotLevel(totalQty(s!.batches), def.slotCapacity));
       if (!levels.some((l) => l === 'empty' || l === 'low')) continue;
-      const top = gridToScreen(tile.x + 0.5, tile.y + 0.5);
-      const y = top.y - BADGE_LIFT[fixture.kind];
-      const w = levels.length * 12 + 6;
-      g.roundRect(top.x - w / 2, y - 8, w, 16, 8).fill({ color: 0x1f2430, alpha: 0.85 }).stroke({ width: 1.5, color: 0xffffff, alpha: 0.9 });
+      const { cx, cy: y, w } = capsuleGeometry(fixture.kind, tile, levels.length);
+      g.roundRect(cx - w / 2, y - CAPSULE_HEIGHT / 2, w, CAPSULE_HEIGHT, CAPSULE_HEIGHT / 2).fill({ color: 0x1f2430, alpha: 0.85 }).stroke({ width: 1.5, color: 0xffffff, alpha: 0.9 });
       levels.forEach((level, i) => {
-        const cx = top.x - w / 2 + 9 + i * 12;
+        const dotX = cx - w / 2 + 9 + i * CAPSULE_STEP;
         const color = level === 'empty' || level === 'low' ? BADGE_COLOR[level] : 0x4cc26b;
-        g.circle(cx, y, 4).fill(color);
+        g.circle(dotX, y, 4).fill(color);
       });
     }
+  }
+}
+
+/** 派工「!」標記浮在設施上方的高度與半徑（不含白色描邊） */
+const DISPATCH_BADGE_LIFT = TILE_HEIGHT * 2.6;
+const DISPATCH_BADGE_RADIUS = 13;
+
+/** 派工「!」標記的中心與半徑（不含描邊），場景與換貨圖示共用 */
+export function dispatchBadge(tile: GridPoint): { readonly x: number; readonly y: number; readonly r: number } {
+  const top = tileTop(tile);
+  return { x: top.x, y: top.y - DISPATCH_BADGE_LIFT, r: DISPATCH_BADGE_RADIUS };
+}
+
+/** 換貨 ⇄ 圖示的大小 */
+const CHANGEOVER_W = 22;
+const CHANGEOVER_H = 18;
+/** 與膠囊、派工標記之間留的空隙 */
+const CHANGEOVER_GAP = 3;
+
+/** 換貨中的格位要標示的位置：那一格陳列櫃，以及 ⇄ 圖示中心（畫面座標） */
+export interface ChangeoverMarker {
+  readonly fixtureId: string;
+  readonly tile: GridPoint;
+  readonly x: number;
+  readonly y: number;
+}
+
+/**
+ * 每個有換貨中格位的陳列櫃格子，取一個 ⇄ 圖示位置（同一格兩個格位都在換貨只畫一個）。
+ * 圖示在那一格正上方、疊在問題膠囊與派工「!」標記兩者之上：
+ * 左右不超出一格的寬度，才不會壓到同一排相鄰格子的提示。
+ */
+export function changeoverMarkers(
+  fixtures: readonly Fixture[],
+  changeovers: readonly { readonly fixtureId: string; readonly slotIndex: number }[],
+): ChangeoverMarker[] {
+  const result: ChangeoverMarker[] = [];
+  const seen = new Set<string>();
+  for (const c of changeovers) {
+    const fixture = fixtures.find((f) => f.id === c.fixtureId);
+    if (!fixture || (fixture.kind !== 'shelf' && fixture.kind !== 'fridge')) continue;
+    const tile = footprintTiles(footprint(FIXTURES[fixture.kind], fixture)).find((t) => slotsOnTile(fixture, t).includes(c.slotIndex));
+    if (!tile) continue;
+    const key = `${fixture.id}:${tile.x},${tile.y}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const dispatch = dispatchBadge(tile);
+    const highest = Math.min(stockAlertBox(fixture.kind, tile, 2).top, dispatch.y - dispatch.r - 1);
+    const y = highest - CHANGEOVER_GAP - CHANGEOVER_H / 2 - 1;
+    result.push({ fixtureId: fixture.id, tile, x: tileTop(tile).x, y });
+  }
+  return result;
+}
+
+/** ⇄ 圖示佔的範圍（含描邊） */
+export function changeoverBadgeBox(m: { readonly x: number; readonly y: number }): ScreenBox {
+  const pad = 1;
+  return { left: m.x - CHANGEOVER_W / 2 - pad, right: m.x + CHANGEOVER_W / 2 + pad, top: m.y - CHANGEOVER_H / 2 - pad, bottom: m.y + CHANGEOVER_H / 2 + pad };
+}
+
+const CHANGEOVER_OUTLINE = 0x3b2f2a;
+const CHANGEOVER_FILL = 0x5aa9e6;
+
+/** 換貨中的格位：那一格陳列櫃上方浮一個 ⇄ 圓角徽章（兩支相反方向的箭頭，向量繪製） */
+export function drawChangeoverMarkers(g: Graphics, game: Game): void {
+  g.clear();
+  for (const { x, y } of changeoverMarkers(game.fixtures, game.changeovers)) {
+    g.roundRect(x - CHANGEOVER_W / 2, y - CHANGEOVER_H / 2, CHANGEOVER_W, CHANGEOVER_H, 6).fill(CHANGEOVER_FILL).stroke({ width: 1.5, color: CHANGEOVER_OUTLINE });
+    const half = 6;
+    // 箭桿＋三角箭頭；dir = 1 指向右
+    const arrow = (ay: number, dir: 1 | -1) => {
+      const tip = x + dir * half;
+      const tail = x - dir * half;
+      g.moveTo(tail, ay).lineTo(tip - dir * 3, ay).stroke({ width: 2, color: 0xffffff, cap: 'round' });
+      g.poly([tip, ay, tip - dir * 4, ay - 3, tip - dir * 4, ay + 3]).fill(0xffffff);
+    };
+    arrow(y - 3, 1);
+    arrow(y + 3, -1);
   }
 }
