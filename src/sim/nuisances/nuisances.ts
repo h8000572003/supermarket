@@ -70,8 +70,12 @@ export function scheduleNuisances(rng: Rng, day: number): ScheduledNuisance[] {
 
 export const NUISANCE_KINDS = Object.keys(NUISANCES) as NuisanceKind[];
 
-/** 顧客每走進一個新格子時掉垃圾的機率 */
-export const LITTER_CHANCE_PER_TILE = 0.003;
+/** 顧客每走進一個新格子時掉垃圾的機率（標準經營下平均每天約 1–2 個，越忙越多） */
+export const LITTER_CHANCE_PER_TILE = 0.0008;
+/** 從第幾個營業日起顧客會掉垃圾（第 1 天讓新手先熟悉） */
+export const FIRST_LITTER_DAY = 2;
+/** 地上同時最多幾個垃圾；已達上限時不再掉新的 */
+export const MAX_LITTER = 3;
 
 /** 處理所需的步數（至少 1 步） */
 export function handleSteps(kind: NuisanceKind): number {

@@ -48,7 +48,9 @@ import type {
   ScheduledIncident,
 } from './incidents/incidents';
 import {
+  FIRST_LITTER_DAY,
   LITTER_CHANCE_PER_TILE,
+  MAX_LITTER,
   NUISANCES,
   TROUBLEMAKER_NEARBY_PENALTY,
   TROUBLEMAKER_RADIUS,
@@ -1351,8 +1353,10 @@ export class Game {
     }
   }
 
-  /** 顧客在 tile 掉下垃圾：入口、不可走的格子與已有垃圾的格子不掉 */
+  /** 顧客在 tile 掉下垃圾：第 1 天、地上垃圾已達上限、入口、不可走的格子與已有垃圾的格子不掉 */
   private dropLitter(tile: GridPoint): void {
+    if (this._day < FIRST_LITTER_DAY) return;
+    if (this._nuisances.filter((n) => n.kind === 'litter').length >= MAX_LITTER) return;
     if (tile.x === ENTRANCE.x && tile.y === ENTRANCE.y) return;
     if (!this.layout.isWalkable(tile)) return;
     if (this._nuisances.some((n) => n.kind === 'litter' && n.tile.x === tile.x && n.tile.y === tile.y)) return;

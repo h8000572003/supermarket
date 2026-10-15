@@ -68,6 +68,7 @@ describe('平衡', { timeout: 30_000 }, () => {
     const handled = simulate(standard, 30, seed);
     const ignored = simulate(ignoreNuisances, 30, seed);
     expect(ignored.reduce((s, r) => s + r.nuisances, 0)).toBeGreaterThan(0);
-    expect(revenue(ignored)).toBeLessThan(revenue(handled) * 0.9);
+    // 垃圾降頻並設上限後，放著不管的損失約 5–15%
+    expect(revenue(ignored)).toBeLessThan(revenue(handled) * 0.95);
   });
 });

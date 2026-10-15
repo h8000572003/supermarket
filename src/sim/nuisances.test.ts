@@ -3,6 +3,7 @@ import { MINUTES_PER_STEP, STEP_MS } from './clock/clock';
 import { Game, MAX_DISPATCHES } from './game';
 import type { DispatchTarget, GameEvent } from './game';
 import {
+  MAX_LITTER,
   NUISANCES,
   TROUBLEMAKER_NEARBY_PENALTY,
   TROUBLEMAKER_STAY_MINUTES,
@@ -181,15 +182,31 @@ describe('麻煩：垃圾與派工', () => {
     expect(late.nuisancePenalty).toBe(game.nuisances.length * NUISANCES.litter.satisfactionPenalty);
   });
 
-  it('顧客會掉垃圾；同一個種子結果相同', () => {
-    const count = () => {
+  it('第 1 天不掉垃圾；第 2 天起顧客會掉垃圾，同一個種子結果相同', () => {
+    const play = () => {
       const { game } = store({ customers: true, seed: 3, staff: 2 });
-      runOpenHours(game);
-      return game.lastReport!.nuisances.byKind.litter.appeared;
+      const perDay: number[] = [];
+      for (let d = 0; d < 6; d++) {
+        if (d > 0) game.submitPurchaseOrder([{ productId: 'cola', qty: 24 }]);
+        runOpenHours(game);
+        perDay.push(game.lastReport!.nuisances.byKind.litter.appeared);
+        game.startNextDay();
+      }
+      return perDay;
     };
-    const n = count();
-    expect(n).toBeGreaterThan(0);
-    expect(count()).toBe(n);
+    const perDay = play();
+    expect(perDay[0]).toBe(0);
+    expect(perDay.slice(1).reduce((a, b) => a + b, 0)).toBeGreaterThan(0);
+    expect(play()).toEqual(perDay);
+  });
+
+  it(`地上已有 ${MAX_LITTER} 個垃圾時，顧客不再掉新的`, () => {
+    const { game } = store({ customers: true, seed: 3, staff: 0 });
+    playThroughDay(game);
+    game.openStore();
+    for (let i = 0; i < MAX_LITTER; i++) litter(game, { x: 1 + i, y: 8 });
+    finishOpenHours(game);
+    expect(game.lastReport!.nuisances.byKind.litter.appeared).toBe(MAX_LITTER);
   });
 
   it('每日結算記下出現數、處理數與累計在場時間', () => {
