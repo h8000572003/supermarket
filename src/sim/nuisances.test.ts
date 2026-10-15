@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { STEP_MS } from './clock/clock';
+import { MINUTES_PER_STEP, STEP_MS } from './clock/clock';
 import { Game, MAX_DISPATCHES } from './game';
 import type { DispatchTarget, GameEvent } from './game';
-import { NUISANCES } from './nuisances/nuisances';
+import {
+  NUISANCES,
+  TROUBLEMAKER_NEARBY_PENALTY,
+  TROUBLEMAKER_STAY_MINUTES,
+  scheduleNuisances,
+} from './nuisances/nuisances';
+import { Rng } from './rng';
 import { finishOpenHours, playThroughDay, runOpenHours, tickResolving } from './test-helpers';
 
 /** 冷藏櫃一個、收銀台一台；第 1 天準備階段 */
@@ -216,5 +222,152 @@ describe('麻煩：垃圾與派工', () => {
     const { game } = store({ customers: true, staff: 2 });
     for (let i = 0; i < 3; i++) playThroughDay(game);
     expect(game.day).toBe(4);
+  });
+});
+
+describe('麻煩的排程', () => {
+  it('第 1、2 天不排老鼠與奧客；第 3 天起每種每天最多 1 次，時刻在 08:00–20:00', () => {
+    for (let seed = 1; seed <= 50; seed++) {
+      expect(scheduleNuisances(Rng.fromSeed(seed), 1)).toEqual([]);
+      expect(scheduleNuisances(Rng.fromSeed(seed), 2)).toEqual([]);
+      const day3 = scheduleNuisances(Rng.fromSeed(seed), 3);
+      for (const kind of ['rat', 'troublemaker'] as const) {
+        expect(day3.filter((s) => s.kind === kind).length).toBeLessThanOrEqual(1);
+      }
+      for (const s of day3) {
+        expect(s.minute).toBeGreaterThanOrEqual(8 * 60);
+        expect(s.minute).toBeLessThanOrEqual(20 * 60);
+      }
+    }
+    const all = Array.from({ length: 50 }, (_, i) => scheduleNuisances(Rng.fromSeed(i + 1), 3)).flat();
+    expect(all.some((s) => s.kind === 'rat')).toBe(true);
+    expect(all.some((s) => s.kind === 'troublemaker')).toBe(true);
+  });
+
+  it('實際經營：前兩天沒有老鼠與奧客，之後每天各最多 1 次', () => {
+    const { game } = store({ customers: true, staff: 2, seed: 5 });
+    const days: { rat: number; troublemaker: number }[] = [];
+    for (let d = 0; d < 10; d++) {
+      runOpenHours(game);
+      const k = game.lastReport!.nuisances.byKind;
+      days.push({ rat: k.rat.appeared, troublemaker: k.troublemaker.appeared });
+      game.startNextDay();
+    }
+    expect(days.slice(0, 2)).toEqual([
+      { rat: 0, troublemaker: 0 },
+      { rat: 0, troublemaker: 0 },
+    ]);
+    for (const d of days) {
+      expect(d.rat).toBeLessThanOrEqual(1);
+      expect(d.troublemaker).toBeLessThanOrEqual(1);
+    }
+    expect(days.some((d) => d.rat === 1)).toBe(true);
+    expect(days.some((d) => d.troublemaker === 1)).toBe(true);
+  });
+});
+
+describe('麻煩：老鼠', () => {
+  it('老鼠在店內走動，不會自己離開，也不碰陳列庫存', () => {
+    const { game, fridge } = store({ staff: 0 });
+    game.openStore();
+    game.restockSlot(fridge, 0);
+    const before = game.slots(fridge)[0]!.batches.reduce((s, b) => s + b.qty, 0);
+    const id = game.placeNuisance('rat', { x: 2, y: 6 })!;
+    const tiles = new Set<string>();
+    for (let i = 0; i < 600; i++) {
+      tickResolving(game, STEP_MS);
+      const rat = game.nuisances.find((n) => n.id === id)!;
+      tiles.add(`${rat.tile.x},${rat.tile.y}`);
+    }
+    expect(tiles.size).toBeGreaterThan(3);
+    expect(game.nuisances.map((n) => n.id)).toEqual([id]);
+    expect(game.slots(fridge)[0]!.batches.reduce((s, b) => s + b.qty, 0)).toBe(before);
+  });
+
+  it('店員追到移動中的老鼠並抓到', () => {
+    const { game } = store();
+    game.openStore();
+    const id = game.placeNuisance('rat', { x: 9, y: 7 })!;
+    stepFor(game, 50);
+    game.dispatch(target(id));
+    stepUntil(game, () => game.nuisances.length === 0);
+    expect(game.phase).toBe('open');
+    finishOpenHours(game);
+    expect(game.lastReport!.nuisances.byKind.rat).toEqual({ appeared: 1, handled: 1 });
+  });
+
+  it('老鼠在場時來客速率 ×0.8', () => {
+    const { game } = store();
+    const { game: plain } = store();
+    game.openStore();
+    plain.openStore();
+    game.placeNuisance('rat', { x: 2, y: 6 });
+    expect(game.arrivalsPerHourNow / plain.arrivalsPerHourNow).toBeCloseTo(0.8);
+  });
+});
+
+describe('麻煩：奧客', () => {
+  const stay = Math.round(TROUBLEMAKER_STAY_MINUTES / MINUTES_PER_STEP);
+
+  it('奧客不算顧客：不計入進店人數', () => {
+    const { game } = store();
+    game.openStore();
+    game.placeNuisance('troublemaker', { x: 6, y: 9 });
+    expect(game.customerAgents).toEqual([]);
+    finishOpenHours(game);
+    expect(game.lastReport!.customers.entered).toBe(0);
+    expect(game.lastReport!.nuisances.byKind.troublemaker.appeared).toBe(1);
+  });
+
+  it('在奧客附近的顧客再多扣一次滿意度', () => {
+    const { game } = store({ customers: true, seed: 7 });
+    game.openStore();
+    stepUntil(game, () => game.customerAgents.some((c) => c.rating));
+    const c = game.customerAgents.find((x) => x.rating)!;
+    game.placeNuisance('troublemaker', c.tile);
+    stepFor(game, 1);
+    expect(c.nuisancePenalty).toBe(NUISANCES.troublemaker.satisfactionPenalty + TROUBLEMAKER_NEARBY_PENALTY);
+  });
+
+  it('沒人勸離：待一段時間後自己走向入口離開，離店途中不再算在場', () => {
+    const { game } = store({ staff: 0 });
+    const { game: plain } = store({ staff: 0 });
+    game.openStore();
+    plain.openStore();
+    const id = game.placeNuisance('troublemaker', { x: 3, y: 3 })!;
+    const ratio = () => game.arrivalsPerHourNow / plain.arrivalsPerHourNow;
+    const both = (n: number) => {
+      for (let i = 0; i < n; i++) {
+        tickResolving(game, STEP_MS);
+        tickResolving(plain, STEP_MS);
+      }
+    };
+    both(stay - 5);
+    expect(ratio()).toBeCloseTo(NUISANCES.troublemaker.arrivalMultiplier);
+    both(10);
+    const tm = game.nuisances.find((n) => n.id === id)!;
+    expect(tm.leaving).toBe(true);
+    expect(ratio()).toBeCloseTo(1);
+    expect(game.dispatch(target(id))).toEqual({ ok: false, error: 'unknown-nuisance' });
+    stepUntil(game, () => game.nuisances.length === 0);
+    expect(game.phase).toBe('open');
+    finishOpenHours(game);
+    const summary = game.lastReport!.nuisances;
+    expect(summary.byKind.troublemaker).toEqual({ appeared: 1, handled: 0 });
+    expect(summary.minutes).toBeCloseTo(TROUBLEMAKER_STAY_MINUTES, -1);
+  });
+
+  it('派店員勸離：處理完後提早離開，標記清除', () => {
+    const { game } = store();
+    game.openStore();
+    const id = game.placeNuisance('troublemaker', { x: 3, y: 5 })!;
+    game.dispatch(target(id));
+    stepUntil(game, () => game.nuisances.every((n) => n.leaving));
+    expect(game.step).toBeLessThan(stay);
+    stepFor(game, 1);
+    expect(game.dispatches).toEqual([]);
+    expect(game.staffAgents[0]!.nuisanceId).toBeNull();
+    finishOpenHours(game);
+    expect(game.lastReport!.nuisances.byKind.troublemaker).toEqual({ appeared: 1, handled: 1 });
   });
 });

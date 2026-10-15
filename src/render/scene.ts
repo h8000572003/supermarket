@@ -159,7 +159,8 @@ export async function createStoreScene(host: HTMLElement, controller: Controller
       const cell = cellAt(p);
       if (tool.mode === 'select') {
         // 營業中點到麻煩：派店員處理（再點一次取消），優先於底下的設施
-        const nuisance = game.phase === 'open' ? pickNuisance(game.nuisances, camera.toWorld(p)) : undefined;
+        const pickable = game.phase === 'open' ? game.nuisances.filter((n) => !n.leaving) : [];
+        const nuisance = pickNuisance(pickable, camera.toWorld(p));
         if (nuisance) {
           controller.toggleDispatch({ kind: 'nuisance', nuisanceId: nuisance.id });
           return;
@@ -274,7 +275,9 @@ export async function createStoreScene(host: HTMLElement, controller: Controller
       sprite.faceToward(p.x);
       // 地上的東西畫在同一格的人物後面
       sprite.zIndex = (x + y) * 10 + 4;
+      // 離店中的奧客不再顯示圖示
       sprite.setHandling(game.isDispatched({ kind: 'nuisance', nuisanceId: n.id }));
+      sprite.showIcon(!n.leaving);
       sprite.animate(now);
     }
     for (const [id, sprite] of nuisanceSprites) {

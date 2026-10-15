@@ -6,6 +6,7 @@ import { Checkout, nearestAvailable } from './agents/checkout';
 import type { RegisterSpot } from './agents/checkout';
 import { CustomerAgent } from './agents/customer';
 import { NuisanceAgent } from './agents/nuisance';
+import type { NuisanceWorld } from './agents/nuisance';
 import { slotKey } from './agents/restock';
 import type { CustomerWorld } from './agents/customer';
 import {
@@ -49,11 +50,15 @@ import type {
 import {
   LITTER_CHANCE_PER_TILE,
   NUISANCES,
+  TROUBLEMAKER_NEARBY_PENALTY,
+  TROUBLEMAKER_RADIUS,
+  TROUBLEMAKER_STAY_MINUTES,
   handleSteps,
   nuisanceArrivalMultiplier,
   nuisanceSeed,
+  scheduleNuisances,
 } from './nuisances/nuisances';
-import type { NuisanceKind } from './nuisances/nuisances';
+import type { NuisanceKind, ScheduledNuisance } from './nuisances/nuisances';
 import { isExpired } from './inventory/expiry';
 import { Inventory } from './inventory/inventory';
 import type { Slot } from './inventory/inventory';
@@ -232,6 +237,9 @@ export interface Staff {
 
 const STAFF_NAMES = ['小林', '阿明', '小美', '阿傑', '小芳', '阿凱', '小婷', '阿豪'];
 
+/** 沒人勸離時奧客在店內待的步數 */
+const TROUBLEMAKER_STAY_STEPS = Math.round(TROUBLEMAKER_STAY_MINUTES / MINUTES_PER_STEP);
+
 /** 緊急叫貨下單到送達的步數 */
 const RUSH_DELIVERY_STEPS = Math.round(RUSH_DELIVERY_MINUTES / MINUTES_PER_STEP);
 
@@ -304,6 +312,8 @@ export class Game {
   private nextNuisanceId = 1;
   /** 麻煩專用亂數流：每天開店時由主亂數的狀態導出，不影響顧客與狀況的亂數序列 */
   private nuisanceRng = Rng.fromSeed(0);
+  /** 今天還沒出現的老鼠與奧客（依時刻排序） */
+  private nuisanceQueue: ScheduledNuisance[] = [];
   private checkout = new Checkout([], () => false);
   private readonly reservedSlots = new Set<string>();
   /** 營業中的派工標記（瞬時狀態，不存檔；打烊時清除） */
@@ -511,9 +521,14 @@ export class Game {
     return this.customers;
   }
 
-  /** 營業時段中店內的麻煩；其他階段為空 */
+  /** 營業時段中店內的麻煩（含正在走向入口離店、已不算在場的奧客）；其他階段為空 */
   get nuisances(): readonly NuisanceAgent[] {
     return this._nuisances;
+  }
+
+  /** 在場的麻煩：不含正在離店的 */
+  private activeNuisances(): NuisanceAgent[] {
+    return this._nuisances.filter((n) => !n.leaving);
   }
 
   /** 收銀台目前排隊人數 */
@@ -577,7 +592,7 @@ export class Game {
       arrivalMultiplier(this._reputation) *
       conditionsArrivalMultiplier(this.today) *
       this.surgeMultiplier() *
-      nuisanceArrivalMultiplier(this._nuisances.map((n) => n.kind))
+      nuisanceArrivalMultiplier(this.activeNuisances().map((n) => n.kind))
     );
   }
 
@@ -1025,8 +1040,9 @@ export class Game {
     }
   }
 
+  /** 在場的麻煩（不含正在離店的） */
   private nuisance(id: string): NuisanceAgent | undefined {
-    return this._nuisances.find((n) => n.id === id);
+    return this._nuisances.find((n) => n.id === id && !n.leaving);
   }
 
   /**
@@ -1100,6 +1116,7 @@ export class Game {
     this.customers = [];
     this._nuisances = [];
     this.nuisanceRng = Rng.fromSeed(nuisanceSeed(this.rng.state, this._day));
+    this.nuisanceQueue = this.nuisancesEnabled ? scheduleNuisances(this.nuisanceRng, this._day) : [];
     this.pendingRush = [];
     this.rushOrdersUsed = 0;
     this.checkout = new Checkout(this.registerSpots(), (p) => this.layout.isWalkable(p));
@@ -1297,18 +1314,40 @@ export class Game {
     else this.startDueIncident();
   }
 
-  /** 麻煩移動、顧客掉垃圾、店內顧客注意到在場的麻煩 */
+  /** 排定的麻煩出現、麻煩移動與離店、顧客掉垃圾、店內顧客注意到在場的麻煩 */
   private updateNuisances(): void {
-    for (const n of this._nuisances) n.update();
+    while (this.nuisanceQueue.length > 0 && (this.nuisanceQueue[0] as ScheduledNuisance).minute <= this.minuteOfDay) {
+      const next = this.nuisanceQueue.shift() as ScheduledNuisance;
+      // 老鼠從倉庫門跑出來，奧客從入口進來
+      this.addNuisance(next.kind, next.kind === 'rat' ? BACKROOM_DOOR : ENTRANCE);
+    }
+    for (const n of this._nuisances) {
+      n.update(this.nuisanceWorld);
+      if (n.kind === 'troublemaker' && !n.leaving && this._step >= n.appearedStep + TROUBLEMAKER_STAY_STEPS) {
+        // 待太久，自己離開
+        this.endPresence(n, false);
+        n.leave(this.nuisanceWorld);
+      }
+    }
+    if (this._nuisances.some((n) => n.gone)) {
+      this._nuisances = this._nuisances.filter((n) => !n.gone);
+      this.changed();
+    }
     for (const c of this.nuisancesEnabled ? this.customers : []) {
       if (c.activity === 'gone') continue;
       const tile = c.tile;
       const entered = tile.x !== Math.round(c.prev.x) || tile.y !== Math.round(c.prev.y);
       if (entered && this.nuisanceRng.chance(LITTER_CHANCE_PER_TILE)) this.dropLitter(tile);
     }
-    if (this._nuisances.length === 0) return;
+    const active = this.activeNuisances();
+    if (active.length === 0) return;
     for (const c of this.customers) {
-      for (const n of this._nuisances) c.noticeNuisance(n.id, NUISANCES[n.kind].satisfactionPenalty);
+      for (const n of active) {
+        c.noticeNuisance(n.id, NUISANCES[n.kind].satisfactionPenalty);
+        if (n.kind !== 'troublemaker') continue;
+        const near = Math.max(Math.abs(c.pos.x - n.pos.x), Math.abs(c.pos.y - n.pos.y)) <= TROUBLEMAKER_RADIUS;
+        if (near) c.noticeNuisance(`${n.id}:near`, TROUBLEMAKER_NEARBY_PENALTY);
+      }
     }
   }
 
@@ -1330,9 +1369,11 @@ export class Game {
     return n;
   }
 
-  /** 麻煩消失（處理掉或打烊）：記下在場時間，派工標記由 clearFinishedDispatches 清除 */
-  private removeNuisance(n: NuisanceAgent, handled: boolean): void {
-    this._nuisances = this._nuisances.filter((x) => x !== n);
+  /**
+   * 麻煩不再在場（處理掉、自己離開或打烊）：記下在場時間；派工標記由 clearFinishedDispatches 清除。
+   * 呼叫者決定把它移除，或讓它走向入口離店
+   */
+  private endPresence(n: NuisanceAgent, handled: boolean): void {
     this.ledger.recordNuisanceGone(n.kind, (this._step - n.appearedStep) * MINUTES_PER_STEP, handled);
     if (handled) this.emit({ type: 'nuisance-handled', kind: n.kind, id: n.id });
     this.changed();
@@ -1383,8 +1424,9 @@ export class Game {
     for (const c of this.customers) c.forceLeave(this.customerWorld);
     this.removeDepartedCustomers();
     // 還在店內的麻煩全部消失，在場時間算到打烊
-    for (const n of this._nuisances) this.removeNuisance(n, false);
+    for (const n of this.activeNuisances()) this.endPresence(n, false);
     this._nuisances = [];
+    this.nuisanceQueue = [];
     // 店員手上還沒上架的商品、下架途中的舊商品退回倉庫
     for (const agent of this.agents) this.inventory.receive(agent.carrying);
     this.agents = [];
@@ -1663,9 +1705,17 @@ export class Game {
     },
     finishHandling: (id) => {
       const n = this.nuisance(id);
-      if (n) this.removeNuisance(n, true);
+      if (!n) return;
+      this.endPresence(n, true);
+      // 奧客被勸離後走向入口離店；其他麻煩當場消失
+      if (n.kind === 'troublemaker') n.leave(this.nuisanceWorld);
+      else this._nuisances = this._nuisances.filter((x) => x !== n);
     },
   };
+
+  private get nuisanceWorld(): NuisanceWorld {
+    return { entrance: ENTRANCE, isWalkable: (p) => this.layout.isWalkable(p), rng: this.nuisanceRng };
+  }
 
   /** 直接從倉庫補貨到格位（略過店員），最多補到 upTo 個（預設補滿）；回傳補上的數量。供測試布置情境用 */
   restockSlot(fixtureId: string, index: number, upTo = Infinity): number {

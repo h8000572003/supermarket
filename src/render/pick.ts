@@ -34,6 +34,8 @@ export function pickFixture(fixtures: readonly Fixture[], p: ScreenPoint): Fixtu
 /** 麻煩頭上圖示中心在所在格中心上方的高度（場景座標） */
 export const NUISANCE_ICON_HEIGHT: Readonly<Record<NuisanceKind, number>> = {
   litter: 20,
+  rat: 20,
+  troublemaker: 60,
 };
 
 /** 點擊判定的半徑：點在麻煩本身或頭上圖示附近都算點到 */
