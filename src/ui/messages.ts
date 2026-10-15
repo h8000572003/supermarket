@@ -33,6 +33,7 @@ export const ERROR_MESSAGES: Record<CommandError, string> = {
   'dispatch-full': '派工標記已達上限（最多 2 個），請先取消一個',
   'already-dispatched': '這裡已經派工了',
   'not-dispatched': '這裡沒有派工',
+  'unknown-nuisance': '這個麻煩已經不在了',
   'slot-unassigned': '這個格位沒有指定商品',
   'slot-full': '這個格位已經補滿了',
   'no-backroom-stock': '倉庫沒有這個商品，可以改用緊急叫貨',

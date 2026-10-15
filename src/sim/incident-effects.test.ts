@@ -42,7 +42,7 @@ function store({
   shelf = ['chips', 'chips', 'chips', 'chips'],
   customers = true,
 }: StoreOptions = {}) {
-  const game = new Game({ seed, customerArrivals: customers });
+  const game = new Game({ nuisances: false, seed, customerArrivals: customers });
   const f = game.placeFixture('fridge', { origin: { x: 1, y: 0 }, facing: 'south' });
   if (!f.ok) throw new Error(f.error);
   fridge.forEach((p, i) => game.assignSlot(f.value.id, i, p));
@@ -307,7 +307,7 @@ describe('熱浪', () => {
 
   it('付不起商品金額時不能選叫貨，只能選不處理', () => {
     // 只有一個放可樂的冷藏櫃、沒有收銀台與店員：第 1 天付完租金後只剩 $100，買不起 12 瓶可樂
-    const game = new Game({ seed: 2, startingFunds: 4_700 });
+    const game = new Game({ nuisances: false, seed: 2, startingFunds: 4_700 });
     const f = game.placeFixture('fridge', { origin: { x: 1, y: 0 }, facing: 'south' });
     if (!f.ok) throw new Error(f.error);
     game.assignSlot(f.value.id, 0, 'cola');

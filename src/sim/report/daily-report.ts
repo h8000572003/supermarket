@@ -3,6 +3,8 @@ import type { CustomerType } from '../agents/demand';
 import type { CategoryId } from '../catalog/products';
 import type { DailyGoalResult } from '../goals/daily-goal';
 import type { IncidentRecord } from '../incidents/incidents';
+import { emptyNuisanceSummary } from '../nuisances/nuisances';
+import type { NuisanceKind, NuisanceSummary } from '../nuisances/nuisances';
 
 /** 單一商品的報廢 */
 export interface WasteLine {
@@ -72,6 +74,8 @@ export interface DailyReport {
   readonly incidents: readonly IncidentRecord[];
   /** 狀況支出：選項費用合計 */
   readonly incidentCosts: number;
+  /** 今天的麻煩：各種類出現與處理數、累計在場時間 */
+  readonly nuisances: NuisanceSummary;
   /** 今天的每日目標與判定結果；沒有每日目標（第 1 天）時為 null */
   readonly dailyGoal: DailyGoalResult | null;
   /** 每日目標發放的資金獎勵（沒有時為 0）；口碑獎勵已併入 progress 的口碑變化 */
@@ -114,6 +118,8 @@ export class DayLedger {
   goalFunds = 0;
   /** 每日目標造成、於打烊時套用的口碑變化 */
   goalReputation = 0;
+  private nuisanceCounts = emptyNuisanceSummary().byKind as Record<NuisanceKind, { appeared: number; handled: number }>;
+  private nuisanceMinutes = 0;
 
   constructor(
     readonly day: number,
@@ -157,6 +163,23 @@ export class DayLedger {
     this.incidentCosts += record.cost;
   }
 
+  recordNuisanceAppeared(kind: NuisanceKind): void {
+    this.nuisanceCounts[kind].appeared++;
+  }
+
+  /** 麻煩消失：在場分鐘數計入累計；handled 為店員處理掉（打烊消失、自行離開則否） */
+  recordNuisanceGone(kind: NuisanceKind, minutes: number, handled: boolean): void {
+    this.nuisanceMinutes += minutes;
+    if (handled) this.nuisanceCounts[kind].handled++;
+  }
+
+  get nuisanceSummary(): NuisanceSummary {
+    const byKind = Object.fromEntries(
+      Object.entries(this.nuisanceCounts).map(([k, c]) => [k, { ...c }]),
+    ) as NuisanceSummary['byKind'];
+    return { byKind, minutes: Math.round(this.nuisanceMinutes) };
+  }
+
   get avgSatisfaction(): number | null {
     return this.satisfactionCount > 0 ? this.satisfactionSum / this.satisfactionCount : null;
   }
@@ -190,6 +213,7 @@ export class DayLedger {
       flashSaleCategories: [...this.flashSaleCategories],
       incidents: [...this.incidents],
       incidentCosts: this.incidentCosts,
+      nuisances: this.nuisanceSummary,
       dailyGoal: this.dailyGoal,
       goalFunds: this.goalFunds,
     };

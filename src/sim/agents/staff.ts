@@ -28,7 +28,10 @@ export type StaffActivity =
   | 'to-clear-out'
   | 'clearing-out'
   | 'returning'
-  | 'unloading';
+  | 'unloading'
+  /** 處理麻煩：走到（追到）麻煩旁邊、處理 */
+  | 'to-nuisance'
+  | 'handling';
 
 /** 換貨中、等待下架的格位 */
 export interface ClearOutCandidate {
@@ -53,7 +56,15 @@ export interface StaffWorld {
   clearOut(fixtureId: string, slotIndex: number): Batch[];
   /** 下架的商品退回倉庫 */
   returnToBackroom(batches: readonly Batch[]): void;
+  /** 麻煩目前所在的格子；已消失時為 null */
+  nuisanceTile(nuisanceId: string): GridPoint | null;
+  /** 店員走到麻煩旁邊、開始處理；回傳處理所需步數 */
+  startHandling(nuisanceId: string): number;
+  /** 處理完成，麻煩消失 */
+  finishHandling(nuisanceId: string): void;
 }
+
+const key = (p: GridPoint) => `${p.x},${p.y}`;
 
 /** 營業時段中，一位店員的位置與工作狀態 */
 export class StaffAgent extends Walker {
@@ -62,9 +73,13 @@ export class StaffAgent extends Walker {
   carrying: Batch[] = [];
   /** 收銀中或前往收銀的收銀台 */
   registerId: string | null = null;
-  /** 目前的補貨工作是否來自派工 */
+  /** 目前的補貨工作是否來自派工（處理麻煩一定來自派工） */
   onDispatch = false;
+  /** 正在處理（前往或處理中）的麻煩 */
+  nuisanceId: string | null = null;
   private timer = 0;
+  /** 追麻煩時目前路徑的終點；麻煩移動後重新規劃 */
+  private chaseGoal: string | null = null;
 
   constructor(id: string, start: GridPoint) {
     super(id, start, STAFF_SPEED);
@@ -74,6 +89,7 @@ export class StaffAgent extends Walker {
   get availableForRegister(): boolean {
     return (
       this.registerId === null &&
+      this.nuisanceId === null &&
       this.carrying.length === 0 &&
       this.activity !== 'stocking' &&
       this.activity !== 'returning' &&
@@ -107,6 +123,17 @@ export class StaffAgent extends Walker {
     reserved.add(slotKey(target.fixtureId, target.slotIndex));
     this.activity = 'to-clear-out';
     this.walkTo(world.slotAccessTile(target.fixtureId, target.slotIndex), world.isWalkable);
+  }
+
+  /** 派工處理麻煩：放下收銀與尚未取貨的工作，走去麻煩旁邊 */
+  assignNuisance(nuisanceId: string, world: StaffWorld, reserved: Set<string>): void {
+    this.dropTask(reserved);
+    this.registerId = null;
+    this.nuisanceId = nuisanceId;
+    this.onDispatch = true;
+    this.activity = 'to-nuisance';
+    this.chaseGoal = null;
+    this.chase(world);
   }
 
   /** 取消派工：還沒取貨就放下工作；已拿著貨則照常上架 */
@@ -233,13 +260,41 @@ export class StaffAgent extends Walker {
         this.carrying = [];
         this.activity = 'idle';
         return;
+      case 'to-nuisance': {
+        const target = this.chase(world);
+        if (!target || !this.nuisanceId) return this.dropTask(reserved);
+        this.move();
+        if (Math.abs(this.pos.x - target.x) + Math.abs(this.pos.y - target.y) <= 1) {
+          this.activity = 'handling';
+          this.timer = world.startHandling(this.nuisanceId);
+        }
+        return;
+      }
+      case 'handling':
+        if (!this.nuisanceId || !world.nuisanceTile(this.nuisanceId)) return this.dropTask(reserved);
+        if (--this.timer > 0) return;
+        world.finishHandling(this.nuisanceId);
+        this.dropTask(reserved);
+        return;
     }
+  }
+
+  /** 朝麻煩目前的格子走；麻煩移動了就重新規劃路徑。回傳麻煩的格子（已消失時為 null） */
+  private chase(world: StaffWorld): GridPoint | null {
+    const target = this.nuisanceId ? world.nuisanceTile(this.nuisanceId) : null;
+    if (target && this.chaseGoal !== key(target)) {
+      this.chaseGoal = key(target);
+      this.walkTo(target, world.isWalkable);
+    }
+    return target;
   }
 
   private dropTask(reserved: Set<string>): void {
     if (this.task) reserved.delete(slotKey(this.task.fixtureId, this.task.slotIndex));
     this.task = null;
     this.onDispatch = false;
+    this.nuisanceId = null;
+    this.chaseGoal = null;
     this.activity = 'idle';
   }
 }

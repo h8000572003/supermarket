@@ -107,6 +107,8 @@ const EVENT_SOUND: Record<GameEvent['type'], SoundName> = {
   'flash-sale-ended': 'click',
   'incident-started': 'error',
   'incident-resolved': 'place',
+  'nuisance-appeared': 'abandon',
+  'nuisance-handled': 'place',
 };
 
 /** 讓模擬事件發出對應音效；回傳取消函式 */

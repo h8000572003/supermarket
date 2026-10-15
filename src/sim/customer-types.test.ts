@@ -14,7 +14,7 @@ const STOCKED = ['cola', 'green-tea', 'chips', 'chocolate', 'cup-noodle', 'bowl-
 /** 冷藏櫃 + 兩個貨架（起始三類）+ 收銀台 + 兩位店員，已下充足的進貨（開店時送達）；停在第 1 天準備階段 */
 function store(options: Partial<GameOptions> & { seed: number; priceFactor?: number }) {
   const { priceFactor = 1, ...gameOptions } = options;
-  const game = new Game(gameOptions);
+  const game = new Game({ nuisances: false, ...gameOptions });
   const place = (...args: Parameters<Game['placeFixture']>) => {
     const r = game.placeFixture(...args);
     if (!r.ok) throw new Error(r.error);

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Fixture } from '../sim/store/store-layout';
 import { ART_HEIGHT } from './fixture-art';
 import { TILE_HEIGHT, gridToScreen } from './iso';
-import { inTilePrism, pickFixture } from './pick';
+import { NUISANCE_ICON_HEIGHT, inTilePrism, pickFixture, pickNuisance } from './pick';
 
 const shelf = (id: string, x: number, y: number): Fixture => ({ id, kind: 'shelf', origin: { x, y }, facing: 'south' });
 
@@ -36,5 +36,26 @@ describe('點擊設施判定', () => {
 
   it('點在空地板：沒有選到設施', () => {
     expect(pickFixture([shelf('a', 4, 4)], gridToScreen(9.5, 9.5))).toBeUndefined();
+  });
+});
+
+describe('點擊麻煩判定', () => {
+  const litter = (id: string, x: number, y: number) => ({ id, kind: 'litter' as const, pos: { x, y } });
+
+  it('點在麻煩所在格的中心或頭上圖示：點到', () => {
+    const n = litter('a', 3, 3);
+    const center = gridToScreen(3.5, 3.5);
+    expect(pickNuisance([n], center)?.id).toBe('a');
+    expect(pickNuisance([n], { x: center.x, y: center.y - NUISANCE_ICON_HEIGHT.litter })?.id).toBe('a');
+  });
+
+  it('點在別的格子：沒點到', () => {
+    expect(pickNuisance([litter('a', 3, 3)], gridToScreen(6.5, 6.5))).toBeUndefined();
+  });
+
+  it('重疊時選前面的', () => {
+    const back = litter('back', 3, 3);
+    const front = litter('front', 3.3, 3.3);
+    expect(pickNuisance([front, back], gridToScreen(3.65, 3.65))?.id).toBe('front');
   });
 });

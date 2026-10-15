@@ -237,8 +237,11 @@ export function layoutBadges(b: TileBadges): PlacedBadge[] {
   return placed;
 }
 
+/** 對設施（格位或收銀台）的派工 */
+type FixtureDispatchTarget = Exclude<DispatchTarget, { kind: 'nuisance' }>;
+
 /** 派工標記所在的那一格設施（與店員站立格相鄰的那一格），與站立格 */
-export function dispatchTiles(fixture: Fixture, target: DispatchTarget): { tile: GridPoint; stand: GridPoint } | null {
+export function dispatchTiles(fixture: Fixture, target: FixtureDispatchTarget): { tile: GridPoint; stand: GridPoint } | null {
   const def = FIXTURES[fixture.kind];
   const stand = target.kind === 'slot' ? slotAccessTile(def, fixture, target.slotIndex) : staffAccessTiles(def, fixture)[0];
   if (!stand) return null;
@@ -274,6 +277,7 @@ export function collectTileBadges(game: Game): TileBadges[] {
     }
   }
   for (const d of game.dispatches) {
+    if (d.kind === 'nuisance') continue;
     const fixture = game.fixture(d.kind === 'slot' ? d.fixtureId : d.registerId);
     const at = fixture && dispatchTiles(fixture, d);
     if (fixture && at) entry(fixture, at.tile).dispatch = true;

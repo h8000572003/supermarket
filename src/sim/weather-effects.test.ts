@@ -16,7 +16,7 @@ const STOCKED = ['cola', 'green-tea', 'chips', 'chocolate', 'cup-noodle', 'bowl-
  * 第 1 天沒有狀況，適合在同種子下只改天氣或星期來比較。
  */
 function store(options: Partial<GameOptions> & { seed: number }) {
-  const game = new Game(options);
+  const game = new Game({ nuisances: false, ...options });
   const place = (...args: Parameters<Game['placeFixture']>) => {
     const r = game.placeFixture(...args);
     if (!r.ok) throw new Error(r.error);
@@ -64,8 +64,8 @@ function listShareOver(seeds: readonly number[], weather: Weather) {
 
 describe('天氣與星期影響來客', () => {
   it('測試用的天氣與星期設定反映在今天的狀態', () => {
-    expect(new Game({ seed: 1, testWeather: ['rainy'] }).today).toMatchObject({ weather: 'rainy', weekday: 'mon' });
-    expect(new Game({ seed: 1, testFirstWeekday: 'sat' }).today).toMatchObject({
+    expect(new Game({ nuisances: false, seed: 1, testWeather: ['rainy'] }).today).toMatchObject({ weather: 'rainy', weekday: 'mon' });
+    expect(new Game({ nuisances: false, seed: 1, testFirstWeekday: 'sat' }).today).toMatchObject({
       weather: 'sunny',
       weekday: 'sat',
       weekend: true,
@@ -105,7 +105,7 @@ describe('天氣與星期影響來客', () => {
   });
 
   it('不指定測試設定時，進入營業時段的來客速率跟著今天的天氣與星期', () => {
-    const game = new Game({ seed: 4, customerArrivals: false });
+    const game = new Game({ nuisances: false, seed: 4, customerArrivals: false });
     for (let d = 0; d < 10; d++) {
       game.openStore();
       const expected =
@@ -122,7 +122,7 @@ describe('天氣與星期影響來客', () => {
 describe('天氣影響購物清單的類別', () => {
   it('今天的類別需求倍率跟著天氣：熱天飲料 ×2、泡麵 ×0.5；冷天泡麵 ×2、飲料 ×0.6', () => {
     const multipliers = (weather: Weather) => {
-      const game = new Game({ seed: 1, testWeather: [weather] });
+      const game = new Game({ nuisances: false, seed: 1, testWeather: [weather] });
       const m = (c: CategoryId) => game.demandMultiplier(c);
       return { drink: m('drink'), noodle: m('noodle'), snack: m('snack') };
     };
@@ -167,7 +167,7 @@ describe('天氣影響購物清單的類別', () => {
 describe('狀況「熱浪」與天氣', () => {
   /** 只有一個放飲料的冷藏櫃、沒有顧客：快速經營 days 天，回傳每天的天氣與發生的狀況 */
   function incidentDays(options: Partial<GameOptions> & { seed: number }, days: number) {
-    const game = new Game({ ...options, customerArrivals: false });
+    const game = new Game({ nuisances: false, ...options, customerArrivals: false });
     const f = game.placeFixture('fridge', { origin: { x: 1, y: 0 }, facing: 'south' });
     if (!f.ok) throw new Error(f.error);
     game.assignSlot(f.value.id, 0, 'cola');
@@ -207,7 +207,7 @@ describe('狀況「熱浪」與天氣', () => {
   });
 
   it('冷天遇上熱浪：飲料需求倍率與天氣相乘（0.6 × 2）', () => {
-    const game = new Game({ seed: 1, customerArrivals: false, testWeather: Array(40).fill('cold') });
+    const game = new Game({ nuisances: false, seed: 1, customerArrivals: false, testWeather: Array(40).fill('cold') });
     const f = game.placeFixture('fridge', { origin: { x: 1, y: 0 }, facing: 'south' });
     if (!f.ok) throw new Error(f.error);
     game.assignSlot(f.value.id, 0, 'cola');

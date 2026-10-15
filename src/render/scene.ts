@@ -19,7 +19,8 @@ import type { ScreenPoint } from './iso';
 import { Camera } from './camera';
 import type { StoreBounds, Viewport } from './camera';
 import { GestureTracker } from './gestures';
-import { pickFixture } from './pick';
+import { pickFixture, pickNuisance } from './pick';
+import { NuisanceSprite } from './nuisance-sprites';
 import { LANDSCAPE_PHONE_QUERY, NARROW_QUERY, matches } from '../ui/media';
 
 const COLORS = {
@@ -157,6 +158,12 @@ export async function createStoreScene(host: HTMLElement, controller: Controller
       const { tool } = interaction.state;
       const cell = cellAt(p);
       if (tool.mode === 'select') {
+        // 營業中點到麻煩：派店員處理（再點一次取消），優先於底下的設施
+        const nuisance = game.phase === 'open' ? pickNuisance(game.nuisances, camera.toWorld(p)) : undefined;
+        if (nuisance) {
+          controller.toggleDispatch({ kind: 'nuisance', nuisanceId: nuisance.id });
+          return;
+        }
         // 點到設施的圖本身（不只是底下的地板格）就選取它
         const picked = pickFixture(game.fixtures, camera.toWorld(p));
         controller.select(picked?.id ?? (cell ? game.fixtureAt(cell)?.id : undefined) ?? null);
@@ -216,6 +223,7 @@ export async function createStoreScene(host: HTMLElement, controller: Controller
 
   // 人物位置每幀更新：在模擬的上一步與這一步之間內插
   const agentSprites = new Map<string, PersonSprite>();
+  const nuisanceSprites = new Map<string, NuisanceSprite>();
   app.ticker.add(() => {
     const alive = new Set<string>();
     const alpha = game.stepAlpha;
@@ -247,6 +255,32 @@ export async function createStoreScene(host: HTMLElement, controller: Controller
       if (alive.has(id)) continue;
       sprite.destroy({ children: true });
       agentSprites.delete(id);
+    }
+
+    const aliveNuisances = new Set<string>();
+    const now = performance.now();
+    for (const n of game.nuisances) {
+      aliveNuisances.add(n.id);
+      let sprite = nuisanceSprites.get(n.id);
+      if (!sprite) {
+        sprite = new NuisanceSprite(n.kind);
+        nuisanceSprites.set(n.id, sprite);
+        objects.addChild(sprite);
+      }
+      const x = n.prev.x + (n.pos.x - n.prev.x) * alpha;
+      const y = n.prev.y + (n.pos.y - n.prev.y) * alpha;
+      const p = gridToScreen(x + 0.5, y + 0.5);
+      sprite.position.set(p.x, p.y);
+      sprite.faceToward(p.x);
+      // 地上的東西畫在同一格的人物後面
+      sprite.zIndex = (x + y) * 10 + 4;
+      sprite.setHandling(game.isDispatched({ kind: 'nuisance', nuisanceId: n.id }));
+      sprite.animate(now);
+    }
+    for (const [id, sprite] of nuisanceSprites) {
+      if (aliveNuisances.has(id)) continue;
+      sprite.destroy({ children: true });
+      nuisanceSprites.delete(id);
     }
   });
 
@@ -359,6 +393,8 @@ function drawOverlay(g: Graphics, game: Game, { interaction }: Controller): void
 function drawDispatchMarkers(g: Graphics, game: Game): void {
   g.clear();
   for (const d of game.dispatches) {
+    // 麻煩的派工由麻煩頭上的「處理中」圖示表示
+    if (d.kind === 'nuisance') continue;
     const f = game.fixture(d.kind === 'slot' ? d.fixtureId : d.registerId);
     const at = f && dispatchTiles(f, d);
     if (!at) continue;

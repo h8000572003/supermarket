@@ -7,7 +7,7 @@ const STOCKED = ['cola', 'green-tea', 'chips', 'chocolate', 'cup-noodle', 'bowl-
 
 /** 有貨、2 位店員、1 台收銀台的店；每天開店前把格位補滿 */
 function goodStore(seed = 1) {
-  const game = new Game({ seed });
+  const game = new Game({ nuisances: false, seed });
   const place = (...args: Parameters<Game['placeFixture']>) => {
     const r = game.placeFixture(...args);
     if (!r.ok) throw new Error(r.error);
@@ -42,14 +42,14 @@ describe('口碑與來客', () => {
   });
 
   it('架上全空的一天讓口碑下降', () => {
-    const game = new Game({ seed: 1 });
+    const game = new Game({ nuisances: false, seed: 1 });
     runOpenHours(game);
     expect(game.reputation).toBeLessThan(STARTING_REPUTATION);
   });
 
   it('口碑越高，來客越多', () => {
     const entered = (startingReputation: number) => {
-      const game = new Game({ seed: 3, startingReputation });
+      const game = new Game({ nuisances: false, seed: 3, startingReputation });
       runOpenHours(game);
       return game.lastReport!.customers.entered;
     };
@@ -57,7 +57,7 @@ describe('口碑與來客', () => {
   });
 
   it('有賣但架上沒貨才算缺貨，依類別記錄', () => {
-    const game = new Game({ seed: 1 });
+    const game = new Game({ nuisances: false, seed: 1 });
     const r0 = game.placeFixture('fridge', { origin: { x: 4, y: 0 }, facing: 'south' });
     if (!r0.ok) throw new Error(r0.error);
     game.assignSlot(r0.value.id, 0, 'cola');
@@ -90,7 +90,7 @@ describe('里程碑', () => {
 describe('破產', () => {
   /** 把錢花光、雇滿店員卻沒有營收 */
   function brokeStore() {
-    const game = new Game({ seed: 1 });
+    const game = new Game({ nuisances: false, seed: 1 });
     for (let i = 0; i < 6; i++) game.hireStaff();
     for (const y of [0, 3]) {
       for (let x = 0; x + 1 < 12 && game.funds >= 4_000; x += 2) {

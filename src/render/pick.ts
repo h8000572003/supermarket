@@ -1,5 +1,6 @@
 import { FIXTURES } from '../sim/catalog/fixtures';
 import { footprint, footprintTiles } from '../sim/store/geometry';
+import type { NuisanceKind } from '../sim/nuisances/nuisances';
 import type { Fixture } from '../sim/store/store-layout';
 import { ART_HEIGHT } from './fixture-art';
 import { TILE_HEIGHT, TILE_WIDTH, gridToScreen } from './iso';
@@ -25,6 +26,37 @@ export function pickFixture(fixtures: readonly Fixture[], p: ScreenPoint): Fixtu
         best = f;
         bestDepth = depth;
       }
+    }
+  }
+  return best;
+}
+
+/** 麻煩頭上圖示中心在所在格中心上方的高度（場景座標） */
+export const NUISANCE_ICON_HEIGHT: Readonly<Record<NuisanceKind, number>> = {
+  litter: 20,
+};
+
+/** 點擊判定的半徑：點在麻煩本身或頭上圖示附近都算點到 */
+export const NUISANCE_HIT_RADIUS = 14;
+
+/** 可點擊的麻煩：種類與網格位置（可帶小數） */
+export interface PickableNuisance {
+  readonly id: string;
+  readonly kind: NuisanceKind;
+  readonly pos: { readonly x: number; readonly y: number };
+}
+
+/** 依畫出來的麻煩（本身與頭上圖示）找出點到的麻煩；重疊時取最前面的 */
+export function pickNuisance<T extends PickableNuisance>(nuisances: readonly T[], p: ScreenPoint): T | undefined {
+  let best: T | undefined;
+  let bestDepth = -Infinity;
+  for (const n of nuisances) {
+    const origin = gridToScreen(n.pos.x + 0.5, n.pos.y + 0.5);
+    const near = (y: number) => Math.hypot(p.x - origin.x, p.y - y) <= NUISANCE_HIT_RADIUS;
+    const depth = n.pos.x + n.pos.y;
+    if (depth > bestDepth && (near(origin.y) || near(origin.y - NUISANCE_ICON_HEIGHT[n.kind]))) {
+      best = n;
+      bestDepth = depth;
     }
   }
   return best;

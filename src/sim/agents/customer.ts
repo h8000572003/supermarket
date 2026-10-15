@@ -71,6 +71,10 @@ export class CustomerAgent extends Walker {
   priceRejects = 0;
   waitSteps = 0;
   patience: number;
+  /** 來店期間同時在場過的麻煩（同一個麻煩只扣一次滿意度） */
+  private readonly nuisancesSeen = new Set<string>();
+  /** 麻煩造成、離店時要扣的滿意度 */
+  private _nuisancePenalty = 0;
   private listIndex = 0;
   private tried = new Set<string>();
   private target: ShelfOffer | null = null;
@@ -98,6 +102,26 @@ export class CustomerAgent extends Walker {
       return 'impatient';
     }
     return null;
+  }
+
+  /** 還在購物或結帳中（滿意度還沒定案）；正在離店或已離開時為 false */
+  get rating(): boolean {
+    return this.activity !== 'leaving' && this.activity !== 'gone';
+  }
+
+  /**
+   * 注意到店內的麻煩：每個 key 只扣一次滿意度，於離店計算滿意度時一起扣。
+   * 滿意度已定案（正在離店）後不再受影響
+   */
+  noticeNuisance(key: string, penalty: number): void {
+    if (!this.rating || this.nuisancesSeen.has(key)) return;
+    this.nuisancesSeen.add(key);
+    this._nuisancePenalty += penalty;
+  }
+
+  /** 麻煩造成、離店時要扣的滿意度 */
+  get nuisancePenalty(): number {
+    return this._nuisancePenalty;
   }
 
   /** 是否已站在隊伍的指定位置 */
@@ -141,9 +165,11 @@ export class CustomerAgent extends Walker {
     this.leave('served', world);
   }
 
-  /** 購物過程的扣分：缺貨扣最多、嫌貴次之、店裡沒賣扣最少 */
+  /** 購物過程的扣分：缺貨扣最多、嫌貴次之、店裡沒賣扣最少；再加上店內麻煩的扣分 */
   private shoppingPenalty(): number {
-    return 35 * this.stockoutCategories.length + 15 * this.priceRejects + 10 * this.notCarried;
+    return (
+      35 * this.stockoutCategories.length + 15 * this.priceRejects + 10 * this.notCarried + this._nuisancePenalty
+    );
   }
 
   /** 打烊時仍在店內：未結帳的商品退回倉庫 */

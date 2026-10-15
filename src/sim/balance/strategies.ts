@@ -3,11 +3,11 @@ import { CATEGORIES, CATEGORY_IDS, PRODUCTS, productById } from '../catalog/prod
 import type { CategoryId } from '../catalog/products';
 import type { FixtureKind } from '../catalog/fixtures';
 import { SHIPPING_FEE } from '../economy/purchase-order';
-import { DAILY_RENT, DAILY_WAGE, Game } from '../game';
+import { STEP_MS } from '../clock/clock';
+import { DAILY_RENT, DAILY_WAGE, Game, MAX_DISPATCHES } from '../game';
 import type { PendingIncident } from '../incidents/incidents';
 import { totalQty } from '../inventory/batch';
 import type { Facing } from '../store/geometry';
-import { runOpenHours } from '../test-helpers';
 import type { DayConditions } from '../weather/weather';
 
 /** 無畫面平衡測試用的「店長策略」：每天準備階段替玩家做決策 */
@@ -19,6 +19,8 @@ export interface Strategy {
   prep(game: Game, plan: StorePlan): void;
   /** 遇到狀況時選哪個選項（回傳索引）；選到付不起的選項時改選第一個付得起的 */
   chooseIncidentOption(incident: PendingIncident, game: Game): number;
+  /** 營業中是否在麻煩出現時立刻派工處理（派工名額滿時等空位） */
+  readonly handlesNuisances: boolean;
 }
 
 /** 第一個選項 */
@@ -56,6 +58,8 @@ export interface DayRow {
   readonly staff: number;
   /** 當天狀況支出 */
   readonly incidentCosts: number;
+  /** 當天出現的麻煩數 */
+  readonly nuisances: number;
   readonly milestones: readonly string[];
   readonly bankrupt: boolean;
 }
@@ -142,6 +146,7 @@ export const standard: Strategy = {
     standardPrep(game, plan);
   },
   chooseIncidentOption: firstOption,
+  handlesNuisances: true,
 };
 
 /** 標準經營的準備階段：依解鎖擴充品項、賺錢後加開收銀台，再依銷量補貨 */
@@ -218,6 +223,7 @@ export const minimal: Strategy = {
     parOrder(game, plan);
   },
   chooseIncidentOption: cheapestOption,
+  handlesNuisances: false,
 };
 
 /** 揮霍：雇滿店員、高價販售 */
@@ -232,6 +238,7 @@ export const overspend: Strategy = {
     parOrder(game, plan);
   },
   chooseIncidentOption: costliestOption,
+  handlesNuisances: true,
 };
 
 /**
@@ -251,6 +258,13 @@ export const neglectResponse: Strategy = {
   chooseIncidentOption: cheapestOption,
 };
 
+/** 標準經營的店，但店裡出現麻煩（垃圾、老鼠、奧客）一律放著不管，只差在不派工處理 */
+export const ignoreNuisances: Strategy = {
+  ...standard,
+  name: '麻煩放著不管',
+  handlesNuisances: false,
+};
+
 export const STRATEGIES: readonly Strategy[] = [
   standard,
   forecastAware,
@@ -258,7 +272,38 @@ export const STRATEGIES: readonly Strategy[] = [
   overspend,
   worstResponse,
   neglectResponse,
+  ignoreNuisances,
 ];
+
+/** 處理麻煩的策略每隔幾步看一次店內（相當於玩家的反應時間） */
+const NUISANCE_CHECK_STEPS = 10;
+
+/** 對還沒派工的麻煩派工，直到派工名額用完 */
+function dispatchNuisances(game: Game): void {
+  for (const n of game.nuisances) {
+    if (game.dispatches.length >= MAX_DISPATCHES) return;
+    const target = { kind: 'nuisance', nuisanceId: n.id } as const;
+    if (!game.isDispatched(target)) game.dispatch(target);
+  }
+}
+
+/** 營業時段跑完：狀況依策略選擇，麻煩依策略處理 */
+function runOpenHours(game: Game, strategy: Strategy): void {
+  const opened = game.openStore();
+  if (!opened.ok) throw new Error(opened.error);
+  while (game.phase === 'open') {
+    const incident = game.pendingIncident;
+    if (incident) {
+      const choice = strategy.chooseIncidentOption(incident, game);
+      const option = incident.options[choice]?.available ? choice : incident.options.findIndex((o) => o.available);
+      const resolved = game.resolveIncident(option);
+      if (!resolved.ok) throw new Error(`${incident.kind}: ${resolved.error}`);
+      continue;
+    }
+    if (strategy.handlesNuisances) dispatchNuisances(game);
+    game.tick((STEP_MS * NUISANCE_CHECK_STEPS) / game.speed);
+  }
+}
 
 /** 以策略經營 days 天（遇破產提前結束），回傳每天的結果 */
 export function simulate(strategy: Strategy, days: number, seed: number): DayRow[] {
@@ -268,11 +313,7 @@ export function simulate(strategy: Strategy, days: number, seed: number): DayRow
   const rows: DayRow[] = [];
   for (let d = 0; d < days; d++) {
     strategy.prep(game, plan);
-    // 準備階段把格位補滿，相當於開店前店員已上架
-    runOpenHours(game, (incident) => {
-      const choice = strategy.chooseIncidentOption(incident, game);
-      return incident.options[choice]?.available ? choice : incident.options.findIndex((o) => o.available);
-    });
+    runOpenHours(game, strategy);
     const r = game.lastReport!;
     rows.push({
       day: r.day,
@@ -286,6 +327,7 @@ export function simulate(strategy: Strategy, days: number, seed: number): DayRow
       abandoned: r.customers.abandoned,
       staff: game.staff.length,
       incidentCosts: r.incidentCosts,
+      nuisances: Object.values(r.nuisances.byKind).reduce((sum, c) => sum + c.appeared, 0),
       milestones: r.progress.milestonesReached,
       bankrupt: r.progress.bankrupt,
     });
