@@ -862,6 +862,11 @@ button {
   cursor: not-allowed;
 }
 
+.report-nuisances {
+  margin: 0;
+  font-size: var(--font);
+}
+
 .report-incidents {
   display: flex;
   flex-direction: column;

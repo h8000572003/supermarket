@@ -1,4 +1,6 @@
 import { CATEGORIES } from '../sim/catalog/products';
+import { NUISANCES, NUISANCE_KINDS } from '../sim/nuisances/nuisances';
+import type { NuisanceSummary } from '../sim/nuisances/nuisances';
 import type { CommandError } from '../sim/game';
 import type { DailyGoalReward, DailyGoalStatus } from '../sim/goals/daily-goal';
 import { WEATHER_NAMES, WEEKDAY_NAMES } from '../sim/weather/weather';
@@ -113,4 +115,14 @@ export function goalProgressRatio(goal: DailyGoalStatus): number {
   if (goal.kind === 'sell-category' || goal.kind === 'served')
     return Math.min(1, goal.current / Math.max(1, goal.target));
   return goal.met ? 1 : 0;
+}
+
+/** 每日結算的麻煩摘要；今天沒有麻煩時回傳空字串 */
+export function formatNuisances(summary: NuisanceSummary): string {
+  const kinds = NUISANCE_KINDS.filter((k) => summary.byKind[k].appeared > 0);
+  if (kinds.length === 0) return '';
+  const appeared = kinds.reduce((s, k) => s + summary.byKind[k].appeared, 0);
+  const handled = kinds.reduce((s, k) => s + summary.byKind[k].handled, 0);
+  const detail = kinds.map((k) => `${NUISANCES[k].name} ${summary.byKind[k].appeared}`).join('、');
+  return `出現 ${appeared} 個（${detail}），處理 ${handled} 個，累計在場 ${formatDuration(summary.minutes)}。在場越久，來客越少、顧客越不滿意。`;
 }

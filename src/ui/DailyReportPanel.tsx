@@ -7,7 +7,7 @@ import type { DailyReport } from '../sim/report/daily-report';
 import { FullScreenPage } from './FullScreenPage';
 import { useGameVersion } from './hooks';
 import { useNarrow } from './media';
-import { formatGoalCount, formatGoalReward, formatMoney, formatTime } from './messages';
+import { formatGoalCount, formatGoalReward, formatMoney, formatNuisances, formatTime } from './messages';
 import { startNewGame } from './new-game';
 
 /** 每日結算畫面；破產時改為結束畫面 */
@@ -126,6 +126,13 @@ export function DailyReportPanel({ game }: { game: Game }) {
               </li>
             ))}
           </ul>
+        </section>
+      )}
+
+      {formatNuisances(report.nuisances) && (
+        <section>
+          <h3>店內麻煩</h3>
+          <p className="report-nuisances">{formatNuisances(report.nuisances)}</p>
         </section>
       )}
 

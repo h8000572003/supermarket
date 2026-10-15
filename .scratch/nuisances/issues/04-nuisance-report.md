@@ -6,9 +6,9 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] `DailyReport` 的麻煩摘要：各種類出現數、處理數、累計在場分鐘
-- [ ] 打烊清除與自行離開的麻煩，在場時間算到消失為止；這些不算「處理」
-- [ ] 每日結算畫面（桌機與手機）顯示摘要
-- [ ] `npm test`、`npm run lint`、`npm run build` 通過
+- [x] `DailyReport` 的麻煩摘要：各種類出現數、處理數、累計在場分鐘
+- [x] 打烊清除與自行離開的麻煩，在場時間算到消失為止；這些不算「處理」
+- [x] 每日結算畫面（桌機與手機）顯示摘要
+- [x] `npm test`、`npm run lint`、`npm run build` 通過
