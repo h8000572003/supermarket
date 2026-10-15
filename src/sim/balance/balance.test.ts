@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { STARTING_FUNDS } from '../game';
-import { forecastAware, minimal, neglectResponse, overspend, simulate, standard, worstResponse } from './strategies';
+import {
+  forecastAware,
+  ignoreNuisances,
+  minimal,
+  neglectResponse,
+  overspend,
+  simulate,
+  standard,
+  worstResponse,
+} from './strategies';
 
 /**
  * 平衡守門：調整數值後，這些經營結果的大方向不應改變。
@@ -51,5 +60,14 @@ describe('平衡', { timeout: 30_000 }, () => {
     const informed = simulate(forecastAware, 30, seed);
     expect(informed).toHaveLength(30);
     expect(informed.at(-1)!.funds).toBeGreaterThan(simulate(standard, 30, seed).at(-1)!.funds);
+  });
+
+  it.each([1, 2, 3])('麻煩放著不管，30 天的累計營收明顯低於標準經營（種子 %i）', (seed) => {
+    // 及時處理麻煩值得：同一家店，只差在不派店員處理垃圾、老鼠與奧客
+    const revenue = (rows: { revenue: number }[]) => rows.reduce((s, r) => s + r.revenue, 0);
+    const handled = simulate(standard, 30, seed);
+    const ignored = simulate(ignoreNuisances, 30, seed);
+    expect(ignored.reduce((s, r) => s + r.nuisances, 0)).toBeGreaterThan(0);
+    expect(revenue(ignored)).toBeLessThan(revenue(handled) * 0.9);
   });
 });
